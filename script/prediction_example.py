@@ -119,6 +119,8 @@ while start_idx + lookback + pred_len <= len(df):
         sample_count=1,
         verbose=False
     )
+    pred_df = pred_df.copy()
+    pred_df['timestamp'] = y_timestamp.values
 
     pred_export = pred_df.copy()
     pred_export['window_id'] = window_id
@@ -139,7 +141,8 @@ if not all_preds:
 output_dir = "/data3/zepeng/xyx/Machine-Learning-2025Fall/output/"
 os.makedirs(output_dir, exist_ok=True)
 
-combined_pred_df = pd.concat(all_preds)
+combined_pred_df = pd.concat(all_preds,ignore_index=True)
+combined_pred_df['timestamp'] = pd.to_datetime(combined_pred_df['timestamp'])
 combined_csv_path = os.path.join(output_dir, "predictions_2020_2025.csv")
 combined_pred_df.to_csv(combined_csv_path)
 print(f"Saved aggregated predictions to: {combined_csv_path}")
@@ -152,3 +155,30 @@ if plot_data is not None:
     output_path = os.path.join(output_dir, "predicted_image/predicted_image.png")
     plot_prediction(kline_df_last, pred_df_last, save_path=output_path)
     print(f"Saved visualization to: {output_path}")
+
+ #visualize predicted curve for 2021-2025
+pred_start = pd.Timestamp("2021-01-01")
+pred_end = pd.Timestamp("2025-12-31")
+pred_mask = (combined_pred_df['timestamp'] >= pred_start) & (combined_pred_df['timestamp'] <= pred_end)
+pred_range_df = combined_pred_df.loc[pred_mask].copy()
+
+if pred_range_df.empty:
+    print("No predicted timestamps fall within 2021-01-01 to 2025-12-31.")
+else:
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+    ax1.plot(pred_range_df['timestamp'], pred_range_df['close'], color='red', label='Predicted Close')
+    ax1.set_ylabel('Close Price')
+    ax1.legend(loc='upper left')
+    ax1.grid(True)
+
+    ax2.plot(pred_range_df['timestamp'], pred_range_df['volume'], color='purple', label='Predicted Volume')
+    ax2.set_xlabel('Timestamp')
+    ax2.set_ylabel('Volume')
+    ax2.legend(loc='upper left')
+    ax2.grid(True)
+
+    plt.tight_layout()
+    range_plot_path = os.path.join(output_dir, "predicted_curve_2021_2025.png")
+    plt.savefig(range_plot_path, dpi=300, bbox_inches="tight")
+    plt.show()
+    print(f"Saved 2021-2025 prediction curve to: {range_plot_path}")
