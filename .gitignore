@@ -1,0 +1,2 @@
+# 忽略 checkpoints 目录及其所有内容
+checkpoints/
