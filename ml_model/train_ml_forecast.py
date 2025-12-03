@@ -49,7 +49,7 @@ def build_supervised(
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """Compute basic regression metrics."""
+    """Compute global regression metrics over all targets."""
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
         "mae": float(mean_absolute_error(y_true, y_pred)),
@@ -57,18 +57,44 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     }
 
 
+def compute_column_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    target_cols: list,
+) -> Dict[str, Dict[str, float]]:
+    """Compute metrics for each individual target column."""
+    per_col: Dict[str, Dict[str, float]] = {}
+    for i, col in enumerate(target_cols):
+        yt = y_true[:, i]
+        yp = y_pred[:, i]
+        per_col[col] = {
+            "rmse": float(np.sqrt(mean_squared_error(yt, yp))),
+            "mae": float(mean_absolute_error(yt, yp)),
+            "r2": float(r2_score(yt, yp)),
+        }
+    return per_col
+
+
 def train_and_evaluate_models(
     X: np.ndarray,
     y: np.ndarray,
+    target_cols: list,
     test_size: float = 0.2,
     random_state: int = 42,
-) -> Tuple[Dict[str, object], Dict[str, Dict[str, float]], np.ndarray, Dict[str, np.ndarray]]:
+) -> Tuple[
+    Dict[str, object],
+    Dict[str, Dict[str, float]],
+    Dict[str, Dict[str, Dict[str, float]]],
+    np.ndarray,
+    Dict[str, np.ndarray],
+]:
     """
     Train and evaluate multiple regression models on the same train/test split.
 
     Returns:
         models: dict of trained models
-        metrics: dict[model_name] -> metrics dict
+        metrics_global: dict[model_name] -> overall metrics dict
+        metrics_per_col: dict[model_name][col_name] -> metrics dict
         y_test: ground truth targets for test split
         preds: dict[model_name] -> prediction array
     """
@@ -90,6 +116,7 @@ def train_and_evaluate_models(
     }
 
     metrics: Dict[str, Dict[str, float]] = {}
+    metrics_per_col: Dict[str, Dict[str, Dict[str, float]]] = {}
     preds: Dict[str, np.ndarray] = {}
 
     for name, model in models.items():
@@ -98,10 +125,11 @@ def train_and_evaluate_models(
         y_pred = model.predict(X_test)
         preds[name] = y_pred
         metrics[name] = compute_metrics(y_test, y_pred)
+        metrics_per_col[name] = compute_column_metrics(y_test, y_pred, target_cols)
         print(f"  Metrics for {name}: RMSE={metrics[name]['rmse']:.4f}, "
               f"MAE={metrics[name]['mae']:.4f}, R2={metrics[name]['r2']:.4f}")
 
-    return models, metrics, y_test, preds
+    return models, metrics, metrics_per_col, y_test, preds
 
 
 def save_results_per_model(
@@ -192,17 +220,34 @@ def save_comparison_plots(
 
 def save_metrics_log(
     metrics: Dict[str, Dict[str, float]],
+    metrics_per_col: Dict[str, Dict[str, Dict[str, float]]],
+    target_cols: list,
     output_dir: str,
 ) -> None:
     """Save metrics for all models to a text log."""
     os.makedirs(output_dir, exist_ok=True)
     log_path = os.path.join(output_dir, "metrics_log.txt")
     with open(log_path, "w", encoding="utf-8") as f:
-        f.write("Model evaluation metrics (lower RMSE/MAE is better, higher R2 is better):\n")
+        f.write(
+            "Model evaluation metrics (lower RMSE/MAE is better, higher R2 is better):\n"
+        )
         for name, m in metrics.items():
-            line = (f"{name}: RMSE={m['rmse']:.6f}, "
-                    f"MAE={m['mae']:.6f}, R2={m['r2']:.6f}\n")
+            line = (
+                f"{name} (overall): RMSE={m['rmse']:.6f}, "
+                f"MAE={m['mae']:.6f}, R2={m['r2']:.6f}\n"
+            )
             f.write(line)
+
+        f.write("\nPer-column metrics:\n")
+        for name, col_dict in metrics_per_col.items():
+            f.write(f"\n[{name}]\n")
+            for col in target_cols:
+                m = col_dict[col]
+                line = (
+                    f"  {col}: RMSE={m['rmse']:.6f}, "
+                    f"MAE={m['mae']:.6f}, R2={m['r2']:.6f}\n"
+                )
+                f.write(line)
     print(f"Saved metrics log to: {log_path}")
 
 
@@ -227,11 +272,25 @@ def main():
     X, y, ts = build_supervised(df, feature_cols, target_cols, lookback=lookback)
     print(f"Built supervised dataset: X={X.shape}, y={y.shape}")
 
-    models, metrics, y_test, preds = train_and_evaluate_models(X, y)
+    models, metrics, metrics_per_col, y_test, preds = train_and_evaluate_models(
+        X, y, target_cols
+    )
 
-    print("\nSummary metrics for all models:")
+    print("\nSummary metrics for all models (overall):")
     for name, m in metrics.items():
-        print(f"  {name}: RMSE={m['rmse']:.4f}, MAE={m['mae']:.4f}, R2={m['r2']:.4f}")
+        print(
+            f"  {name}: RMSE={m['rmse']:.4f}, MAE={m['mae']:.4f}, R2={m['r2']:.4f}"
+        )
+
+    print("\nPer-column metrics:")
+    for name, col_dict in metrics_per_col.items():
+        print(f"Model: {name}")
+        for col in target_cols:
+            m = col_dict[col]
+            print(
+                f"  {col}: RMSE={m['rmse']:.4f}, "
+                f"MAE={m['mae']:.4f}, R2={m['r2']:.4f}"
+            )
 
     # Only last len(y_test) timestamps are used as test timestamps
     test_ts = ts[-len(y_test) :]
@@ -242,7 +301,7 @@ def main():
 
     # Save comparison plots and metrics log
     save_comparison_plots(test_ts, y_test, preds, target_cols, output_dir)
-    save_metrics_log(metrics, output_dir)
+    save_metrics_log(metrics, metrics_per_col, target_cols, output_dir)
 
 
 if __name__ == "__main__":
