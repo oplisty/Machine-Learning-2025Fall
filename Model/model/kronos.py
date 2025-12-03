@@ -6,8 +6,8 @@ import sys
 
 from tqdm import trange
 
-sys.path.append("../")
-from model.module import *
+sys.path.append("/data3/zepeng/xyx/Machine-Learning-2025Fall/Model/model")
+from module import *
 
 
 class KronosTokenizer(nn.Module, PyTorchModelHubMixin):
