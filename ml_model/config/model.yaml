@@ -1,0 +1,24 @@
+data:
+  data_path: data/data.csv
+  start_time: 2018-01-02  # 数据开始时间
+  end_time: 2025-04-24    # 数据结束时间
+  fit_start_time: 2018-01-02  # 特征拟合开始时间(保证和训练集相同)
+  fit_end_time: 2023-01-01
+  train : [2018-01-02, 2023-01-03]    # 训练集时间范围
+  valid : [2023-01-04, 2023-12-29]    # 验证集时间范围
+  test : [2024-01-02, 2025-04-24]    # 测试集时间范围
+
+model:
+  model_name: xgboost
+  kwargs:
+    eval_metric: rmse # 评价指标
+    colsample_bytree: 0.8879 # 列采样比例
+    eta: 0.0421 # 学习率
+    max_depth: 8 # 最大深度
+    n_estimators: 647 # 迭代次数
+    subsample: 0.8789 # 子采样比例
+    nthread: 20 # 线程数
+
+output_dir: ml_model/output/xgboost
+
+  
