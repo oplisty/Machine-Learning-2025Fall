@@ -1,6 +1,7 @@
 numpy
 pandas
 xgboost
+lightgbm
 scikit-learn
 matplotlib
 pyyaml
