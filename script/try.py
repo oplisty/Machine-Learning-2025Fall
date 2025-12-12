@@ -321,10 +321,10 @@ class StrategyLongOnly_ConvictionFilter(BaseMLStrategy):
     params = dict(
         name="StrategyLongOnly_ConvictionFilter",
         lookback=120,
-        w_pred=0.65,
-        w_alpha=0.35,
+        w_pred=0.78,
+        w_alpha=0.22,
         q_exit=0.05,   # bottom 5% 才空仓
-        q_half=0.25,   # bottom 5~25% 半仓
+        q_half=0.11,   # bottom 5~25% 半仓
     )
 
     def __init__(self):
@@ -365,10 +365,10 @@ class StrategyLongShort_QuantileDirectional(BaseMLStrategy):
     params = dict(
         name="StrategyLongShort_QuantileDirectional",
         lookback=120,
-        w_pred=0.7,
-        w_alpha=0.3,
-        q_long=0.80,   # top 20% 做多
-        q_short=0.20,  # bottom 20% 做空
+        w_pred=0.6,
+        w_alpha=0.4,
+        q_long=0.90,   # top 20% 做多
+        q_short=0.10,  # bottom 20% 做空
     )
 
     def __init__(self):
