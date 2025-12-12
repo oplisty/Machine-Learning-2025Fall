@@ -20,5 +20,15 @@ This project is aimed at building a Machine Learning model to implement quantita
 
 ## Quick Start
 
+### Requirements Install
+
+
+
+```shell
+conda create -n mlhw python==3.12
+conda activate mlhw
+pip install requirements.txt
+```
+
 ### Data Preprocessing and $\alpha$ Factor Mining
 
