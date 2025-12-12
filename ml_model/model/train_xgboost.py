@@ -8,12 +8,12 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.multioutput import MultiOutputRegressor
 import matplotlib.pyplot as plt
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from hydra.utils import get_original_cwd
-
+plt.rcParams['font.sans-serif'] = ['STHeiti']
+plt.rcParams['axes.unicode_minus'] = False
 
 def load_config(config_path: str) -> Dict:
     """加载 YAML 配置文件"""
@@ -142,8 +142,16 @@ def train_xgboost_model(
     y_valid: np.ndarray,
     model_kwargs: Dict,
     target_cols: list,
-) -> Tuple[MultiOutputRegressor, Dict[str, float], Dict[str, float], np.ndarray, np.ndarray]:
-    """训练 XGBoost 模型"""
+) -> Tuple[
+    list,
+    Dict[str, float],
+    Dict[str, float],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """训练 XGBoost 模型（单目标逐列训练，兼容多输出）"""
     print("\n=== 训练 XGBoost 模型 ===")
     
     # 准备参数（处理 Hydra 的 DictConfig）
@@ -154,19 +162,30 @@ def train_xgboost_model(
     eval_metric = params.pop('eval_metric', 'rmse')
     nthread = params.pop('nthread', -1)
     
-    # 创建基础 XGBoost 模型
-    base_model = xgb.XGBRegressor(**params, n_jobs=nthread)
+    n_targets = y_train.shape[1]
+    models: list = []
+    y_train_pred = np.zeros_like(y_train, dtype=float)
+    y_valid_pred = np.zeros_like(y_valid, dtype=float)
+    train_hist_list, valid_hist_list = [], []
     
-    # 使用 MultiOutputRegressor 包装以支持多输出回归
-    model = MultiOutputRegressor(base_model, n_jobs=1)
+    print("开始训练（逐列）...")
+    for i in range(n_targets):
+        est = xgb.XGBRegressor(**params, n_jobs=nthread, eval_metric=eval_metric)
+        est.fit(
+            X_train,
+            y_train[:, i],
+            eval_set=[(X_train, y_train[:, i]), (X_valid, y_valid[:, i])],
+            verbose=False,
+        )
+        models.append(est)
+        y_train_pred[:, i] = est.predict(X_train)
+        y_valid_pred[:, i] = est.predict(X_valid)
+        res = est.evals_result()
+        train_hist_list.append(res["validation_0"][eval_metric])
+        valid_hist_list.append(res["validation_1"][eval_metric])
     
-    # 训练模型
-    print("开始训练...")
-    model.fit(X_train, y_train)
-    
-    # 预测
-    y_train_pred = model.predict(X_train)
-    y_valid_pred = model.predict(X_valid)
+    train_history = np.mean(np.vstack(train_hist_list), axis=0)
+    valid_history = np.mean(np.vstack(valid_hist_list), axis=0)
     
     # 计算指标
     train_metrics = compute_metrics(y_train, y_train_pred)
@@ -177,7 +196,15 @@ def train_xgboost_model(
     print(f"验证集指标: RMSE={valid_metrics['rmse']:.4f}, "
           f"MAE={valid_metrics['mae']:.4f}, R2={valid_metrics['r2']:.4f}")
     
-    return model, train_metrics, valid_metrics, y_train_pred, y_valid_pred
+    return (
+        models,
+        train_metrics,
+        valid_metrics,
+        y_train_pred,
+        y_valid_pred,
+        train_history,
+        valid_history,
+    )
 
 
 def save_results(
@@ -233,6 +260,31 @@ def save_results(
             print(f"保存图表到: {fig_path}")
 
 
+def plot_loss_curve(
+    train_history: np.ndarray,
+    valid_history: np.ndarray,
+    output_dir: str,
+    metric_name: str = "rmse",
+) -> None:
+    """绘制训练/验证损失曲线"""
+    if train_history.size == 0 or valid_history.size == 0:
+        return
+    os.makedirs(output_dir, exist_ok=True)
+    plt.figure(figsize=(10, 5))
+    plt.plot(train_history, label="train")
+    plt.plot(valid_history, label="valid")
+    plt.xlabel("Boosting round")
+    plt.ylabel(metric_name)
+    plt.title(f"Training vs Validation {metric_name}")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    fig_path = os.path.join(output_dir, f"loss_curve_{metric_name}.png")
+    plt.tight_layout()
+    plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"保存训练/验证曲线到: {fig_path}")
+
+
 def save_metrics_log(
     train_metrics: Dict[str, float],
     valid_metrics: Dict[str, float],
@@ -271,10 +323,9 @@ def save_metrics_log(
     print(f"保存指标日志到: {log_path}")
 
 
-def save_model(model: MultiOutputRegressor, output_dir: str) -> None:
-    """保存模型"""
+def save_model(model: list, output_dir: str) -> None:
+    """保存模型列表"""
     os.makedirs(output_dir, exist_ok=True)
-    # MultiOutputRegressor 包含多个 XGBoost 模型，使用 pickle 保存整个模型
     model_path = os.path.join(output_dir, "xgboost_model.pkl")
     with open(model_path, 'wb') as f:
         pickle.dump(model, f)
@@ -290,6 +341,7 @@ def main(cfg: DictConfig):
     data_config = cfg.data
     model_config = cfg.model
     output_dir_cfg = cfg.output_dir
+    checkpoints_output_dir_cfg = cfg.checkpoints_output_dir
     horizon = int(cfg.get("horizon", 1))
     lookback = int(cfg.get("lookback", 10))
 
@@ -367,14 +419,24 @@ def main(cfg: DictConfig):
     
     # 训练模型
     model_kwargs = model_config["kwargs"].copy()
-    model, train_metrics, valid_metrics, y_train_pred, y_valid_pred = train_xgboost_model(
+    (
+        models,
+        train_metrics,
+        valid_metrics,
+        y_train_pred,
+        y_valid_pred,
+        train_history,
+        valid_history,
+    ) = train_xgboost_model(
         X_train, y_train, X_valid, y_valid, model_kwargs, target_cols
     )
     
     # 测试集预测（如果测试集不为空）
     if X_test.shape[0] > 0:
         print("\n=== 测试集评估 ===")
-        y_test_pred = model.predict(X_test)
+        y_test_pred = np.zeros_like(y_test, dtype=float)
+        for i, est in enumerate(models):
+            y_test_pred[:, i] = est.predict(X_test)
         test_metrics = compute_metrics(y_test, y_test_pred)
         test_metrics_per_col = compute_column_metrics(y_test, y_test_pred, target_cols)
         
@@ -394,12 +456,13 @@ def main(cfg: DictConfig):
     
     # 保存结果
     print("\n=== 保存结果 ===")
-    save_model(model, str(output_dir))
+    save_model(models, str(checkpoints_output_dir_cfg))
     save_results(ts_train, y_train, y_train_pred, target_cols, str(output_dir), prefix="train_")
     save_results(ts_valid, y_valid, y_valid_pred, target_cols, str(output_dir), prefix="valid_")
     if X_test.shape[0] > 0:
         save_results(ts_test, y_test, y_test_pred, target_cols, str(output_dir), prefix="test_")
     save_metrics_log(train_metrics, valid_metrics, test_metrics, test_metrics_per_col, target_cols, str(output_dir))
+    plot_loss_curve(train_history, valid_history, str(output_dir), metric_name="rmse")
     
     print("\n训练完成！")
 

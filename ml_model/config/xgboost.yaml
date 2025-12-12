@@ -13,13 +13,13 @@ model:
   kwargs:
     eval_metric: rmse # 评价指标
     colsample_bytree: 0.8879 # 列采样比例
-    eta: 0.0421 # 学习率
+    eta: 0.421 # 学习率
     max_depth: 8 # 最大深度
     n_estimators: 647 # 迭代次数
     subsample: 0.8789 # 子采样比例
     nthread: 20 # 线程数
 
 output_dir: ml_model/output/xgboost
-
-horizon: 1       # 预测天数（可通过命令行 override，如 horizon=3）
-lookback: 10     # 使用过去多少天作为输入窗口（可通过命令行 override）
+checkpoints_output_dir: ml_model/checkpoints/xgboost
+horizon: 5       # 预测天数（可通过命令行 override，如 horizon=3）
+lookback: 30     # 使用过去多少天作为输入窗口（可通过命令行 override）
