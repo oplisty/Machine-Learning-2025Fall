@@ -5,4 +5,5 @@ lightgbm
 scikit-learn
 matplotlib
 pyyaml
+hydra-core
 

@@ -21,4 +21,5 @@ model:
 
 output_dir: ml_model/output/xgboost
 
-  
+horizon: 1       # 预测天数（可通过命令行 override，如 horizon=3）
+lookback: 10     # 使用过去多少天作为输入窗口（可通过命令行 override）
