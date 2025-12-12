@@ -20,3 +20,5 @@ This project is aimed at building a Machine Learning model to implement quantita
 
 ## Quick Start
 
+### Data Preprocessing and $\alpha$ Factor Mining
+
