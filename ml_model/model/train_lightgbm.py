@@ -8,8 +8,10 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.multioutput import MultiOutputRegressor
 import matplotlib.pyplot as plt
+import hydra
+from omegaconf import DictConfig, OmegaConf
+from hydra.utils import get_original_cwd
 
 
 def load_config(config_path: str) -> Dict:
@@ -36,24 +38,28 @@ def filter_by_time_range(df: pd.DataFrame, start_time: str, end_time: str) -> pd
 
 
 def build_supervised(
-    df: pd.DataFrame, feature_cols: list, target_cols: list, lookback: int = 10
+    df: pd.DataFrame,
+    feature_cols: list,
+    target_cols: list,
+    lookback: int = 10,
+    horizon: int = 1,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     构建监督学习数据集：
     X: 过去 `lookback` 天的特征
-    y: 当前时刻的目标值
+    y: 未来 horizon 天后的目标值
     """
     values = df[feature_cols].values.astype(float)
     targets = df[target_cols].values.astype(float)
     timestamps = df["timestamps"].values
 
     X_list, y_list, ts_list = [], [], []
-    for i in range(lookback, len(df) - 1):
+    for i in range(lookback, len(df) - horizon + 1):
         X_window = values[i - lookback : i].reshape(-1)
-        y_next = targets[i]
+        y_next = targets[i + horizon - 1]
         X_list.append(X_window)
         y_list.append(y_next)
-        ts_list.append(timestamps[i])
+        ts_list.append(timestamps[i + horizon - 1])
 
     X = np.array(X_list)
     y = np.array(y_list)
@@ -120,26 +126,66 @@ def train_lightgbm_model(
     y_valid: np.ndarray,
     model_kwargs: Dict,
     target_cols: list,
-) -> Tuple[MultiOutputRegressor, Dict[str, float], Dict[str, float], np.ndarray, np.ndarray]:
-    """训练 LightGBM GBDT 模型"""
+) -> Tuple[
+    list,
+    Dict[str, float],
+    Dict[str, float],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """训练 LightGBM GBDT 模型（逐列训练，记录训练/验证曲线）"""
     print("\n=== 训练 LightGBM 模型 ===")
 
     params = model_kwargs.copy()
+    # 将 loss 映射到 objective，避免重复警告
+    if "loss" in params:
+        params["objective"] = params.pop("loss")
     eval_metric = params.pop("eval_metric", "rmse")
-    n_jobs = params.pop("nthread", -1)
+    n_jobs = params.pop("num_threads", params.pop("nthread", -1))
 
-    base_model = lgb.LGBMRegressor(
-        objective="regression",
-        n_jobs=n_jobs,
-        **params,
-    )
-    model = MultiOutputRegressor(base_model)
+    n_targets = y_train.shape[1]
+    models: list = []
+    y_train_pred = np.zeros_like(y_train, dtype=float)
+    y_valid_pred = np.zeros_like(y_valid, dtype=float)
+    train_hist_list, valid_hist_list = [], []
 
-    print("开始训练...")
-    model.fit(X_train, y_train)
+    print("开始训练（逐列）...")
+    for i in range(n_targets):
+        est = lgb.LGBMRegressor(
+            n_jobs=n_jobs,
+            **params,
+        )
+        est.fit(
+            X_train,
+            y_train[:, i],
+            eval_set=[(X_train, y_train[:, i]), (X_valid, y_valid[:, i])],
+            eval_metric=eval_metric,
+        )
 
-    y_train_pred = model.predict(X_train)
-    y_valid_pred = model.predict(X_valid)
+        models.append(est)
+        y_train_pred[:, i] = est.predict(X_train)
+        y_valid_pred[:, i] = est.predict(X_valid)
+        res = est.evals_result_
+
+        # 兼容不同 key 命名（training/validation_0/valid_0 等）
+        
+        keys = list(res.keys())
+        train_key = keys[0]
+        valid_key = keys[1] if len(keys) > 1 else keys[0]
+
+        def _get_metric(history_dict, mname):
+            if mname in history_dict:
+                return history_dict[mname]
+            # 若 eval_metric 名不一致，取第一个序列兜底
+            return next(iter(history_dict.values()))
+
+        train_hist_list.append(_get_metric(res[train_key], eval_metric))
+        valid_hist_list.append(_get_metric(res[valid_key], eval_metric))
+
+    train_history = np.mean(np.vstack(train_hist_list), axis=0)
+    valid_history = np.mean(np.vstack(valid_hist_list), axis=0)
 
     train_metrics = compute_metrics(y_train, y_train_pred)
     valid_metrics = compute_metrics(y_valid, y_valid_pred)
@@ -153,7 +199,15 @@ def train_lightgbm_model(
         f"MAE={valid_metrics['mae']:.4f}, R2={valid_metrics['r2']:.4f}"
     )
 
-    return model, train_metrics, valid_metrics, y_train_pred, y_valid_pred
+    return (
+        models,
+        train_metrics,
+        valid_metrics,
+        y_train_pred,
+        y_valid_pred,
+        train_history,
+        valid_history,
+    )
 
 
 def save_results(
@@ -206,6 +260,31 @@ def save_results(
             print(f"保存图表到: {fig_path}")
 
 
+def plot_loss_curve(
+    train_history: np.ndarray,
+    valid_history: np.ndarray,
+    output_dir: str,
+    metric_name: str = "rmse",
+) -> None:
+    """绘制训练/验证损失曲线"""
+    if train_history.size == 0 or valid_history.size == 0:
+        return
+    os.makedirs(output_dir, exist_ok=True)
+    plt.figure(figsize=(10, 5))
+    plt.plot(train_history, label="train")
+    plt.plot(valid_history, label="valid")
+    plt.xlabel("Boosting round")
+    plt.ylabel(metric_name)
+    plt.title(f"Training vs Validation {metric_name}")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    fig_path = os.path.join(output_dir, f"loss_curve_{metric_name}.png")
+    plt.tight_layout()
+    plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"保存训练/验证曲线到: {fig_path}")
+
+
 def save_metrics_log(
     train_metrics: Dict[str, float],
     valid_metrics: Dict[str, float],
@@ -252,8 +331,8 @@ def save_metrics_log(
     print(f"保存指标日志到: {log_path}")
 
 
-def save_model(model: MultiOutputRegressor, output_dir: str) -> None:
-    """保存模型"""
+def save_model(model: list, output_dir: str) -> None:
+    """保存模型列表"""
     os.makedirs(output_dir, exist_ok=True)
     model_path = os.path.join(output_dir, "lightgbm_model.pkl")
     with open(model_path, "wb") as f:
@@ -261,19 +340,22 @@ def save_model(model: MultiOutputRegressor, output_dir: str) -> None:
     print(f"保存模型到: {model_path}")
 
 
-def main():
-    base_dir = Path(__file__).parent.parent.parent
-    config_path = base_dir / "ml_model" / "config" / "model.yaml"
+@hydra.main(version_base=None, config_path="../config", config_name="lightGBM")
+def main(cfg: DictConfig):
+    base_dir = Path(get_original_cwd())
 
-    print(f"加载配置文件: {config_path}")
-    config = load_config(str(config_path))
+    model_config = cfg.model
+    # 将 DictConfig 转成 dict，便于 pop
+    model_kwargs = OmegaConf.to_container(model_config.kwargs, resolve=True)
+    dataset_cfg = model_kwargs.pop("dataset")
+    output_dir_cfg = cfg.output_dir
+    checkpoints_output_dir_cfg = cfg.get("checkpoints_output_dir", "ml_model/checkpoints/lightgbm")
+    horizon = int(cfg.get("horizon", 1))
+    lookback = int(cfg.get("lookback", 10))
 
-    data_config = config["data"]
-    model_config = config["model"]
-    output_dir = config["output_dir"]
-
-    data_path = base_dir / data_config["data_path"]
-    output_dir = base_dir / "ml_model" / "output" / "lightgbm"
+    data_path = base_dir / dataset_cfg["data_path"]
+    output_dir = base_dir / output_dir_cfg / f"horizon_{horizon}"
+    checkpoints_output_dir = base_dir / checkpoints_output_dir_cfg / f"horizon_{horizon}"
 
     print(f"\n数据路径: {data_path}")
     print(f"输出目录: {output_dir}")
@@ -287,12 +369,12 @@ def main():
     )
 
     # 获取测试集结束时间，确保 fit_end_time 包含测试集数据
-    test_range = data_config["test"]
+    test_range = dataset_cfg["test"]
     test_end = pd.to_datetime(test_range[1])
 
     # 根据 fit 时间范围过滤数据
-    fit_start = data_config["fit_start_time"]
-    fit_end = data_config["fit_end_time"]
+    fit_start = dataset_cfg["fit_start_time"]
+    fit_end = dataset_cfg["fit_end_time"]
     fit_end_dt = pd.to_datetime(fit_end)
 
     if fit_end_dt < test_end:
@@ -306,13 +388,14 @@ def main():
     feature_cols = ["open", "high", "low", "close", "volume", "amount"]
     target_cols = ["open", "high", "low", "close", "volume", "amount"]
 
-    lookback = 10
-    print(f"\n构建监督学习数据集 (lookback={lookback})...")
-    X, y, ts = build_supervised(df_fit, feature_cols, target_cols, lookback=lookback)
+    print(f"\n构建监督学习数据集 (lookback={lookback}, horizon={horizon})...")
+    X, y, ts = build_supervised(
+        df_fit, feature_cols, target_cols, lookback=lookback, horizon=horizon
+    )
     print(f"数据集形状: X={X.shape}, y={y.shape}")
 
-    train_range = data_config["train"]
-    valid_range = data_config["valid"]
+    train_range = dataset_cfg["train"]
+    valid_range = dataset_cfg["valid"]
     # test_range 已获取
 
     print("\n划分数据集:")
@@ -343,14 +426,23 @@ def main():
         print(f"测试集时间范围: {test_range[0]} -> {test_range[1]}")
         print("将跳过测试集评估。")
 
-    model_kwargs = model_config["kwargs"].copy()
-    model, train_metrics, valid_metrics, y_train_pred, y_valid_pred = train_lightgbm_model(
+    (
+        models,
+        train_metrics,
+        valid_metrics,
+        y_train_pred,
+        y_valid_pred,
+        train_history,
+        valid_history,
+    ) = train_lightgbm_model(
         X_train, y_train, X_valid, y_valid, model_kwargs, target_cols
     )
 
     if X_test.shape[0] > 0:
         print("\n=== 测试集评估 ===")
-        y_test_pred = model.predict(X_test)
+        y_test_pred = np.zeros_like(y_test, dtype=float)
+        for i, est in enumerate(models):
+            y_test_pred[:, i] = est.predict(X_test)
         test_metrics = compute_metrics(y_test, y_test_pred)
         test_metrics_per_col = compute_column_metrics(y_test, y_test_pred, target_cols)
 
@@ -372,7 +464,7 @@ def main():
         y_test_pred = np.array([]).reshape(0, len(target_cols))
 
     print("\n=== 保存结果 ===")
-    save_model(model, str(output_dir))
+    save_model(models, str(checkpoints_output_dir))
     save_results(ts_train, y_train, y_train_pred, target_cols, str(output_dir), prefix="train_")
     save_results(ts_valid, y_valid, y_valid_pred, target_cols, str(output_dir), prefix="valid_")
     if X_test.shape[0] > 0:
@@ -380,6 +472,7 @@ def main():
     save_metrics_log(
         train_metrics, valid_metrics, test_metrics, test_metrics_per_col, target_cols, str(output_dir)
     )
+    plot_loss_curve(train_history, valid_history, str(output_dir), metric_name="rmse")
 
     print("\n训练完成！")
 

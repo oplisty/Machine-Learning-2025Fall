@@ -1,88 +1,30 @@
-qlib_init:
-    provider_uri:
-        day: "~/.qlib/qlib_data/cn_data"
-        1min: "~/.qlib/qlib_data/cn_data_1min"
-    region: cn
-    dataset_cache: null
-    maxtasksperchild: null
-market: &market csi300
-benchmark: &benchmark SH000300
-data_handler_config: &data_handler_config
-    start_time: 2008-01-01
-    # 1min closing time is 15:00:00
-    end_time: "2020-08-01 15:00:00"
-    fit_start_time: 2008-01-01
-    fit_end_time: 2014-12-31
-    instruments: *market
-    freq:
-        label: day
-        feature_15min: 1min
-        feature_day: day
-    # with label as reference
-    inst_processors:
-        feature_15min:
-            - class: ResampleNProcessor
-              module_path: features_resample_N.py
-              kwargs:
-                  target_frq: 1d
 
-port_analysis_config: &port_analysis_config
-    strategy:
-        class: TopkDropoutStrategy
-        module_path: qlib.contrib.strategy
-        kwargs:
-            signal: <PRED>
-            topk: 50
-            n_drop: 5
-    backtest:
-        start_time: 2017-01-01
-        end_time: 2020-08-01
-        account: 100000000
-        benchmark: *benchmark
-        exchange_kwargs:
-            limit_threshold: 0.095
-            deal_price: close
-            open_cost: 0.0005
-            close_cost: 0.0015
-            min_cost: 5
-task:
-    model:
-        class: LGBModel
-        module_path: qlib.contrib.model.gbdt
-        kwargs:
-            loss: mse
-            colsample_bytree: 0.8879
-            learning_rate: 0.2
-            subsample: 0.8789
-            lambda_l1: 205.6999
-            lambda_l2: 580.9768
-            max_depth: 8
-            num_leaves: 210
-            num_threads: 20
+model:
+  model_name: lightgbm
+  kwargs:
+    objective: regression
+    colsample_bytree: 0.7
+    subsample: 0.7
+    learning_rate: 0.05
+    n_estimators: 800
+    num_leaves: 127
+    max_depth: 6
+    min_child_samples: 20
+    min_gain_to_split: 0.0
+    lambda_l1: 0.0
+    lambda_l2: 0.0
+    num_threads: 20
     dataset:
-        class: DatasetH
-        module_path: qlib.data.dataset
-        kwargs:
-            handler:
-                class: Avg15minHandler
-                module_path: multi_freq_handler.py
-                kwargs: *data_handler_config
-            segments:
-                train: [2008-01-01, 2014-12-31]
-                valid: [2015-01-01, 2016-12-31]
-                test: [2017-01-01, 2020-08-01]
-    record:
-        - class: SignalRecord
-          module_path: qlib.workflow.record_temp
-          kwargs:
-            model: <MODEL>
-            dataset: <DATASET>
-        - class: SigAnaRecord
-          module_path: qlib.workflow.record_temp
-          kwargs:
-            ana_long_short: False
-            ann_scaler: 252
-        - class: PortAnaRecord
-          module_path: qlib.workflow.record_temp
-          kwargs:
-            config: *port_analysis_config
+      data_path: data/data.csv
+      start_time: 2018-01-02  # 数据开始时间
+      end_time: 2025-04-24    # 数据结束时间
+      fit_start_time: 2018-01-02  # 特征拟合开始时间(保证和训练集相同)
+      fit_end_time: 2023-01-01
+      train : [2018-01-02, 2023-01-03]    # 训练集时间范围
+      valid : [2023-01-04, 2023-12-29]    # 验证集时间范围
+      test : [2024-01-02, 2025-04-24]    # 测试集时间范围
+
+output_dir: ml_model/output/lightgbm
+checkpoints_output_dir: ml_model/checkpoints/lightgbm
+horizon: 5       # 预测天数（可通过命令行 override，如 horizon=3）
+lookback: 30     # 使用过去多少天作为输入窗口（可通过命令行 override）
