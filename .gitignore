@@ -1,2 +1,9 @@
 # 忽略 checkpoints 目录及其所有内容
 checkpoints/
+.DS_Store
+.idea/misc.xml
+.idea/vcs.xml
+.gitignore
+.idea/workspace.xml
+.gitignore
+.idea/inspectionProfiles/profiles_settings.xml
