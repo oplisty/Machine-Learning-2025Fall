@@ -135,6 +135,24 @@ factors = [
 # 确保没有奇怪的 inf / NaN 干扰统计
 df_train.replace([np.inf, -np.inf], np.nan, inplace=True)
 
+
+# =========================================================
+# 4.5 因子极值处理（Winsorize）
+# =========================================================
+
+def winsorize(series, lower=0.01, upper=0.99):
+    return series.clip(
+        series.quantile(lower),
+        series.quantile(upper)
+    )
+
+for fac in factors:
+    df_train[fac] = winsorize(df_train[fac])
+
+
+
+
+
 # =========================================================
 # 5. 计算单因子 IC（Pearson / Spearman）
 # =========================================================

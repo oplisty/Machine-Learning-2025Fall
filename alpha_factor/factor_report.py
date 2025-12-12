@@ -3,10 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-# ==============================
-# 0. 读取数据 & 基础预处理
-# ==============================
+# 报告输出目录
+output_dir = "output/factor_report_plots"
+os.makedirs(output_dir, exist_ok=True)
 
+# 读取并预处理（与 factor_visual.py 保持一致）
 df = pd.read_csv("data.csv")
 
 df["timestamps"] = pd.to_datetime(df["timestamps"])
@@ -22,15 +23,12 @@ df = df.rename(columns={
     "amount": "amount"
 })
 
+# 基础列
 df["vwap"] = df["amount"] / df["volume"].replace(0, np.nan)
 df["ret_1"] = df["close"].pct_change(1)
 df["hl_range"] = df["high"] - df["low"]
 
-df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-# ==============================
-# 1. 指标函数
-# ==============================
+# 指标函数
 
 def calc_rsi(series, window=14):
     delta = series.diff()
@@ -42,8 +40,10 @@ def calc_rsi(series, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
+
 def ema(series, span):
     return series.ewm(span=span, adjust=False).mean()
+
 
 def calc_macd(close, fast=12, slow=26, signal=9):
     ema_fast = ema(close, fast)
@@ -53,9 +53,7 @@ def calc_macd(close, fast=12, slow=26, signal=9):
     macd = (dif - dea) * 2
     return dif, dea, macd
 
-# ==============================
-# 2. 构建候选因子
-# ==============================
+# 构建候选因子
 
 df["ret_5"] = df["close"].pct_change(5)
 df["ret_10"] = df["close"].pct_change(10)
@@ -91,19 +89,12 @@ df["lower_ratio"] = df["lower_shadow"] / (df["hl_range"] + 1e-12)
 
 df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-# ==============================
-# 3. 截断到 2023-12-31，再算未来收益（防止泄漏）
-# ==============================
-
+# 截断到 2023-12-31 再算未来收益
 cutoff = pd.to_datetime("2023-12-31")
 df_train = df[df["date"] <= cutoff].copy()
 
 df_train["future_ret_5"] = df_train["close"].shift(-5) / df_train["close"] - 1
 df_train = df_train.dropna(subset=["future_ret_5"]).reset_index(drop=True)
-
-# ==============================
-# 4. 选定 8 个推荐因子
-# ==============================
 
 selected_factors = [
     "price_vwap_diff",
@@ -116,79 +107,80 @@ selected_factors = [
     "lower_ratio"
 ]
 
-# 输出目录
-output_dir = "output/factor_plots"
-os.makedirs(output_dir, exist_ok=True)
-
-# ==============================
-# 5. 分层收益函数
-# ==============================
+# 辅助函数
 
 def factor_layer_stats(df_in, factor, n=5):
-    df_tmp = df_in[[factor, "future_ret_5"]].dropna().copy()
+    df_tmp = df_in[["date", factor, "future_ret_5"]].dropna().copy()
     if df_tmp.shape[0] < n * 10:
         return None
-    df_tmp["factor_bin"] = pd.qcut(
-        df_tmp[factor],
-        n,
-        labels=False,
-        duplicates="drop"
-    )
-    layer_ret = df_tmp.groupby("factor_bin")["future_ret_5"].mean()
-    return layer_ret
+    df_tmp["factor_bin"] = df_tmp.groupby('date')[factor].transform(lambda x: pd.qcut(x, n, labels=False, duplicates='drop'))
+    daily_q = df_tmp.groupby(['date', 'factor_bin'])['future_ret_5'].mean().unstack()
+    return daily_q
 
-# ==============================
-# 6. IC 时间序列 Rolling 120-day
-# ==============================
 
 def rolling_spearman_ic(df_in, factor, window=120):
     df_tmp = df_in[["date", factor, "future_ret_5"]].dropna().copy()
     if df_tmp.shape[0] < window:
         return None
-
     fac_rank = df_tmp[factor].rank()
     ret_rank = df_tmp["future_ret_5"].rank()
-
     roll_ic = fac_rank.rolling(window).corr(ret_rank)
-
     ic_ts = pd.DataFrame({
         "date": df_tmp["date"],
         "ic": roll_ic
     }).dropna()
-
     return ic_ts
 
-# ==============================
-# 7. 批量绘制图像
-# ==============================
-
+# 绘图与保存逻辑：对每个因子生成两张图（分位累积 Long-Short、IC 时间序列），每张图保存 PDF（无标题）和 PNG（带标题）
 for fac in selected_factors:
-    print(f"绘制因子 {fac} ...")
+    print(f"Processing factor: {fac}")
 
-    # ---------- 分层收益图 ----------
-    layer_ret = factor_layer_stats(df_train, fac, n=5)
-    if layer_ret is not None:
-        plt.figure(figsize=(6, 4))
-        x = np.arange(len(layer_ret))
-        plt.bar(x, layer_ret.values)
-        plt.xticks(x, [f"Q{i}" for i in range(len(layer_ret))])
-        plt.axhline(0, linestyle="--")
-        plt.ylabel("Mean future_ret_5")
-        plt.title(f"Layered Return - {fac}")
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{fac}_layered_return.png"))
-        plt.close()
+    # 分位日度平均收益矩阵（date x q）
+    daily_q = factor_layer_stats(df_train, fac, n=5)
+    if daily_q is not None and not daily_q.empty:
+        # 计算 long-short（top - bottom）的日收益
+        top = daily_q.iloc[:, -1]
+        bottom = daily_q.iloc[:, 0]
+        ls_ret = (top - bottom).fillna(0)
+        cum = (1 + ls_ret).cumprod()
 
-    # ---------- IC 时间序列图 ----------
+        # 画图
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(cum.index, cum.values, label='Long-Short')
+        ax.set_ylabel('Cumulative Return')
+        ax.grid(True)
+        # PNG 带标题
+        ax.set_title(f"Long-Short Cumulative - {fac}")
+        png_path = os.path.join(output_dir, f"{fac}_longshort.png")
+        fig.tight_layout()
+        fig.savefig(png_path, format='png', bbox_inches='tight')
+
+        # PDF 不要小标题 -> 清除标题后保存
+        ax.set_title("")
+        pdf_path = os.path.join(output_dir, f"{fac}_longshort.pdf")
+        fig.tight_layout()
+        fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
+        plt.close(fig)
+
+    # IC 时间序列
     ic_ts = rolling_spearman_ic(df_train, fac, window=120)
     if ic_ts is not None and not ic_ts.empty:
-        plt.figure(figsize=(8, 4))
-        plt.plot(ic_ts["date"], ic_ts["ic"])
-        plt.axhline(0, linestyle="--")
-        plt.ylabel("Rolling Spearman IC (120d)")
-        plt.title(f"IC Time Series - {fac}")
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{fac}_ic_timeseries.png"))
-        plt.close()
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(ic_ts['date'], ic_ts['ic'], label='IC')
+        ax.axhline(0, linestyle='--', color='gray')
+        ax.set_ylabel('Rolling Spearman IC (120d)')
+        ax.grid(True)
+        # PNG 带标题
+        ax.set_title(f"IC Time Series - {fac}")
+        png_path = os.path.join(output_dir, f"{fac}_ic_timeseries.png")
+        fig.tight_layout()
+        fig.savefig(png_path, format='png', bbox_inches='tight')
 
-print(f"\n全部完成！图像已保存至：{output_dir}")
+        # PDF 无标题
+        ax.set_title("")
+        pdf_path = os.path.join(output_dir, f"{fac}_ic_timeseries.pdf")
+        fig.tight_layout()
+        fig.savefig(pdf_path, format='pdf', bbox_inches='tight')
+        plt.close(fig)
+
+print('\nAll done. Files saved to:', output_dir)
