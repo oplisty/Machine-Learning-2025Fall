@@ -40,7 +40,7 @@ BACKTEST_START = pd.Timestamp("2024-01-01")
 BACKTEST_END = pd.Timestamp("2025-04-24")
 
 INITIAL_CASH = 100000.0
-FEE_RATE = 0.001   # 单边手续费 0.1%
+FEE_RATE = 0.000   # 单边手续费 0.1%
 
 
 # =========================
