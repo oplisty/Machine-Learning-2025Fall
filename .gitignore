@@ -1,5 +1,5 @@
 # 忽略 checkpoints 目录及其所有内容
-checkpoints/
+ml_model/checkpoints/
 .DS_Store
 .idea/misc.xml
 .idea/vcs.xml

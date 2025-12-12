@@ -1,0 +1,29 @@
+data:
+  data_path: data/data.csv
+  start_time: '2018-01-02'
+  end_time: '2025-04-24'
+  fit_start_time: '2018-01-02'
+  fit_end_time: '2023-01-01'
+  train:
+  - '2018-01-02'
+  - '2023-01-03'
+  valid:
+  - '2023-01-04'
+  - '2023-12-29'
+  test:
+  - '2024-01-02'
+  - '2025-04-24'
+model:
+  model_name: xgboost
+  kwargs:
+    eval_metric: rmse
+    colsample_bytree: 0.8879
+    eta: 0.0421
+    max_depth: 8
+    n_estimators: 2000
+    subsample: 0.8789
+    nthread: 20
+output_dir: ml_model/output/xgboost
+checkpoints_output_dir: ml_model/checkpoints/xgboost
+horizon: 3
+lookback: 30
