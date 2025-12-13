@@ -1,0 +1,12 @@
+best_parameters:
+  max_depth: 40
+  max_features: 0.7
+  min_samples_leaf: 14
+  min_samples_split: 5
+  n_estimators: 600
+  n_jobs: 20
+  random_state: 42
+method: randomized
+n_iter: 50
+train_rmse: 939855483.5486149
+valid_rmse: 580119310.0909781

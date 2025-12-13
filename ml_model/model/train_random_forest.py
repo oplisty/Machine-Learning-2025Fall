@@ -1,5 +1,6 @@
 import os
 import pickle
+import yaml
 from pathlib import Path
 from typing import Tuple, Dict
 
@@ -8,6 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import ParameterGrid, ParameterSampler
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from hydra.utils import get_original_cwd
@@ -110,12 +112,150 @@ def compute_column_metrics(
     return per_col
 
 
+def save_best_parameters(best_params: Dict, train_rmse: float, valid_rmse: float, search_config: Dict, output_dir: str) -> None:
+    """保存最佳参数到文件"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 保存为 YAML 格式
+    params_file = os.path.join(output_dir, "best_parameters.yaml")
+    with open(params_file, "w", encoding="utf-8") as f:
+        yaml.dump({
+            "best_parameters": best_params,
+            "train_rmse": float(train_rmse),
+            "valid_rmse": float(valid_rmse),
+            "method": search_config.get("method", "randomized"),
+            "n_iter": search_config.get("n_iter", 50) if search_config.get("method", "randomized") == "randomized" else None,
+        }, f, default_flow_style=False, allow_unicode=True, indent=2)
+    print(f"保存最佳参数到: {params_file}")
+    
+    # 保存为文本格式（便于阅读）
+    txt_file = os.path.join(output_dir, "best_parameters.txt")
+    with open(txt_file, "w", encoding="utf-8") as f:
+        f.write("=" * 60 + "\n")
+        f.write("随机森林最佳参数搜索结果\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"搜索方法: {search_config.get('method', 'randomized')}\n")
+        if search_config.get("method", "randomized") == "randomized":
+            f.write(f"迭代次数: {search_config.get('n_iter', 50)}\n")
+        f.write(f"训练集 RMSE: {train_rmse:.6f}\n")
+        f.write(f"验证集 RMSE: {valid_rmse:.6f}\n\n")
+        f.write("最佳参数:\n")
+        f.write("-" * 60 + "\n")
+        for key, value in best_params.items():
+            f.write(f"  {key}: {value}\n")
+    print(f"保存最佳参数（文本格式）到: {txt_file}")
+
+
+def search_best_parameters(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_valid: np.ndarray,
+    y_valid: np.ndarray,
+    search_config: Dict,
+    base_params: Dict,
+    output_dir: str = None,
+) -> Dict:
+    """
+    使用启发式搜索找到最佳参数
+    基于训练集和验证集的 RMSE 选择最佳参数（验证集 RMSE 最小）
+    不对 n_estimators 进行调参
+    """
+    print("\n=== 开始参数搜索 ===")
+    print("基于训练集和验证集损失选择最佳参数（验证集 RMSE 最小）")
+    
+    # search_config 已经是普通 dict，直接使用
+    param_distributions = search_config.get("param_distributions", {})
+    method = search_config.get("method", "randomized").lower()
+    n_iter = int(search_config.get("n_iter", 50))
+    
+    # 确保不搜索 n_estimators
+    if "n_estimators" in param_distributions:
+        print("警告: 从搜索参数中移除 n_estimators（不对此参数进行调参）")
+        param_distributions = {k: v for k, v in param_distributions.items() if k != "n_estimators"}
+    
+    # 合并基础参数（用于固定参数，如 n_jobs, random_state, n_estimators）
+    fixed_params = {k: v for k, v in base_params.items() if k not in param_distributions}
+    n_estimators = fixed_params.get("n_estimators", base_params.get("n_estimators", 100))
+    
+    # 生成参数组合
+    if method == "randomized":
+        print(f"使用随机搜索 (n_iter={n_iter})...")
+        param_list = list(ParameterSampler(
+            param_distributions,
+            n_iter=n_iter,
+            random_state=base_params.get("random_state", 42)
+        ))
+    else:  # grid search
+        print("使用网格搜索...")
+        param_list = list(ParameterGrid(param_distributions))
+        print(f"总共 {len(param_list)} 个参数组合")
+    
+    best_params = None
+    best_valid_rmse = float('inf')
+    best_train_rmse = float('inf')
+    best_idx = -1
+    
+    print(f"\n开始评估 {len(param_list)} 个参数组合...")
+    for idx, params in enumerate(param_list):
+        # 合并固定参数和搜索参数
+        current_params = {**fixed_params, **params}
+        
+        # 创建并训练模型
+        model = RandomForestRegressor(**current_params)
+        model.fit(X_train, y_train)
+        
+        # 计算训练集和验证集 RMSE
+        y_train_pred = model.predict(X_train)
+        y_valid_pred = model.predict(X_valid)
+        
+        # 使用按列标准化的 RMSE（每个列的 RMSE 取平均），避免被大数值列主导
+        # 或者使用加权平均，这里使用简单的列平均
+        train_rmse_per_col = []
+        valid_rmse_per_col = []
+        for col_idx in range(y_train.shape[1]):
+            train_rmse_col = float(np.sqrt(mean_squared_error(y_train[:, col_idx], y_train_pred[:, col_idx])))
+            valid_rmse_col = float(np.sqrt(mean_squared_error(y_valid[:, col_idx], y_valid_pred[:, col_idx])))
+            train_rmse_per_col.append(train_rmse_col)
+            valid_rmse_per_col.append(valid_rmse_col)
+        
+        # 使用各列 RMSE 的平均值作为总体 RMSE
+        train_rmse = float(np.mean(train_rmse_per_col))
+        valid_rmse = float(np.mean(valid_rmse_per_col))
+        
+        # 选择验证集 RMSE 最小的参数
+        if valid_rmse < best_valid_rmse:
+            best_valid_rmse = valid_rmse
+            best_train_rmse = train_rmse
+            best_params = current_params.copy()
+            best_idx = idx
+        
+        # 每 10 个组合打印一次进度
+        if (idx + 1) % 10 == 0 or (idx + 1) == len(param_list):
+            print(f"  进度: {idx + 1}/{len(param_list)} | "
+                  f"当前: train_rmse={train_rmse:.4f}, valid_rmse={valid_rmse:.4f} | "
+                  f"最佳: valid_rmse={best_valid_rmse:.4f}")
+    
+    print(f"\n最佳参数组合 (第 {best_idx + 1} 个):")
+    print(f"  训练集 RMSE: {best_train_rmse:.6f}")
+    print(f"  验证集 RMSE: {best_valid_rmse:.6f}")
+    print(f"  参数: {best_params}")
+    
+    # 保存最佳参数到输出目录
+    if output_dir:
+        save_best_parameters(best_params, best_train_rmse, best_valid_rmse, search_config, output_dir)
+    
+    # 返回最佳参数（不包含 n_estimators，因为它已经在 base_params 中）
+    return {k: v for k, v in best_params.items() if k in param_distributions}
+
+
 def train_random_forest_model(
     X_train: np.ndarray,
     y_train: np.ndarray,
     X_valid: np.ndarray,
     y_valid: np.ndarray,
     model_kwargs: Dict,
+    search_config: Dict = None,
+    output_dir: str = None,
 ) -> Tuple[
     RandomForestRegressor,
     Dict[str, float],
@@ -127,10 +267,27 @@ def train_random_forest_model(
 ]:
     """
     训练 RandomForest，并记录随树数量增加的训练/验证损失（rmse）
+    如果 search_config 启用，会先进行参数搜索
     """
     print("\n=== 训练 RandomForest 模型 ===")
 
     params = model_kwargs.copy()
+    
+    # 如果启用参数搜索，先搜索最佳参数
+    if search_config and search_config.get("enabled", False):
+        print("\n" + "="*60)
+        print("参数搜索已启用，开始搜索最佳参数...")
+        print("="*60)
+        best_params = search_best_parameters(X_train, y_train, X_valid, y_valid, search_config, params, output_dir)
+        # 更新参数
+        params.update(best_params)
+        print(f"\n使用搜索到的最佳参数: {params}")
+    else:
+        if search_config:
+            print(f"\n参数搜索未启用 (enabled={search_config.get('enabled', False)})，使用配置文件中的默认参数")
+        else:
+            print("\n未配置参数搜索，使用配置文件中的默认参数")
+
     total_estimators = int(params.pop("n_estimators", 300))
     step = max(10, total_estimators // 20)  # 至少 10，每 5% 记录一次
 
@@ -294,15 +451,25 @@ def save_model(model: RandomForestRegressor, output_dir: str) -> None:
 def main(cfg: DictConfig):
     base_dir = Path(get_original_cwd())
 
-    data_cfg = cfg.data
-    model_cfg = cfg.model
-    model_kwargs = OmegaConf.to_container(model_cfg.kwargs, resolve=True)
+    # 使用 OmegaConf 统一处理配置
+    data_config = cfg.data
+    model_config = cfg.model
+    model_kwargs = OmegaConf.to_container(model_config.kwargs, resolve=True)
+    
+    # 读取参数搜索配置
+    if "hyperparameter_search" in model_config:
+        search_config = OmegaConf.to_container(model_config.hyperparameter_search, resolve=True)
+        print(f"\n参数搜索配置: enabled={search_config.get('enabled', False)}")
+    else:
+        search_config = None
+        print("\n未找到参数搜索配置，将使用默认参数")
+    
     output_dir_cfg = cfg.output_dir
     checkpoints_output_dir_cfg = cfg.get("checkpoints_output_dir", "ml_model/checkpoints/random_forest")
     horizon = int(cfg.get("horizon", 1))
     lookback = int(cfg.get("lookback", 10))
 
-    data_path = base_dir / data_cfg.data_path
+    data_path = base_dir / data_config["data_path"]
     output_dir = base_dir / output_dir_cfg / f"horizon_{horizon}"
     checkpoints_output_dir = base_dir / checkpoints_output_dir_cfg / f"horizon_{horizon}"
 
@@ -310,6 +477,7 @@ def main(cfg: DictConfig):
     print(f"输出目录: {output_dir}")
 
     # 加载数据
+    print("\n加载数据...")
     df = load_data(str(data_path))
     print(
         f"数据时间范围: {df['timestamps'].min()} -> {df['timestamps'].max()}, "
@@ -317,13 +485,15 @@ def main(cfg: DictConfig):
     )
 
     # 处理 fit 时间范围，确保覆盖测试集
-    test_range = data_cfg.test
+    test_range = data_config["test"]
     test_end = pd.to_datetime(test_range[1])
-    fit_start = data_cfg.fit_start_time
-    fit_end = data_cfg.fit_end_time
+    fit_start = data_config["fit_start_time"]
+    fit_end = data_config["fit_end_time"]
     fit_end_dt = pd.to_datetime(fit_end)
+    
     if fit_end_dt < test_end:
-        print(f"警告: fit_end_time ({fit_end}) 早于测试集结束时间 ({test_range[1]})，自动扩展到测试结束。")
+        print(f"警告: fit_end_time ({fit_end}) 早于测试集结束时间 ({test_range[1]})")
+        print("自动扩展 fit_end_time 到测试集结束时间以包含测试集数据")
         fit_end = test_range[1]
 
     df_fit = filter_by_time_range(df, fit_start, fit_end)
@@ -336,8 +506,8 @@ def main(cfg: DictConfig):
     X, y, ts = build_supervised(df_fit, feature_cols, target_cols, lookback=lookback, horizon=horizon)
     print(f"数据集形状: X={X.shape}, y={y.shape}")
 
-    train_range = data_cfg.train
-    valid_range = data_cfg.valid
+    train_range = data_config["train"]
+    valid_range = data_config["valid"]
 
     print("\n划分数据集:")
     print(f"  训练集: {train_range[0]} -> {train_range[1]}")
@@ -361,6 +531,13 @@ def main(cfg: DictConfig):
     print(f"  验证集: {X_valid.shape[0]} 样本")
     print(f"  测试集: {X_test.shape[0]} 样本")
 
+    # 检查测试集是否为空
+    if X_test.shape[0] == 0:
+        print("\n警告: 测试集为空！请检查 fit_end_time 是否包含测试集的时间范围。")
+        print(f"当前 fit_end_time: {fit_end}")
+        print(f"测试集时间范围: {test_range[0]} -> {test_range[1]}")
+        print("将跳过测试集评估。")
+
     (
         rf_model,
         train_metrics,
@@ -370,7 +547,7 @@ def main(cfg: DictConfig):
         train_history,
         valid_history,
     ) = train_random_forest_model(
-        X_train, y_train, X_valid, y_valid, model_kwargs
+        X_train, y_train, X_valid, y_valid, model_kwargs, search_config, str(output_dir)
     )
 
     if X_test.shape[0] > 0:
@@ -394,7 +571,6 @@ def main(cfg: DictConfig):
         test_metrics = {"rmse": 0.0, "mae": 0.0, "r2": 0.0}
         test_metrics_per_col = {col: {"rmse": 0.0, "mae": 0.0, "r2": 0.0} for col in target_cols}
         y_test_pred = np.array([]).reshape(0, len(target_cols))
-        print("\n警告: 测试集为空，已跳过测试评估。")
 
     print("\n=== 保存结果 ===")
     save_model(rf_model, str(checkpoints_output_dir))

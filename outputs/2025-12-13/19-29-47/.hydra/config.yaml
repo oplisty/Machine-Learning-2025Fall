@@ -1,0 +1,70 @@
+data:
+  data_path: data/data.csv
+  start_time: '2018-01-02'
+  end_time: '2025-04-24'
+  fit_start_time: '2018-01-02'
+  fit_end_time: '2023-01-01'
+  train:
+  - '2018-01-02'
+  - '2023-01-03'
+  valid:
+  - '2023-01-04'
+  - '2023-12-29'
+  test:
+  - '2024-01-02'
+  - '2025-04-24'
+model:
+  model_name: random_forest
+  kwargs:
+    n_estimators: 600
+    max_depth: 30
+    min_samples_split: 2
+    min_samples_leaf: 2
+    max_features: 0.7
+    n_jobs: 20
+    random_state: 42
+  hyperparameter_search:
+    enabled: false
+    method: randomized
+    n_iter: 50
+    cv: 3
+    scoring: neg_mean_squared_error
+    param_distributions:
+      n_estimators:
+      - 100
+      - 200
+      - 300
+      - 400
+      - 500
+      - 600
+      - 800
+      - 1000
+      max_depth:
+      - 10
+      - 15
+      - 20
+      - 25
+      - 30
+      - None
+      min_samples_split:
+      - 2
+      - 5
+      - 10
+      - 15
+      min_samples_leaf:
+      - 1
+      - 2
+      - 4
+      - 6
+      max_features:
+      - 0.5
+      - 0.6
+      - 0.7
+      - 0.8
+      - 0.9
+      - sqrt
+      - log2
+output_dir: ml_model/output/random_forest
+checkpoints_output_dir: ml_model/checkpoints/random_forest
+horizon: 1
+lookback: 50

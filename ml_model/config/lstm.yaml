@@ -1,0 +1,27 @@
+data:
+  data_path: data/data.csv
+  start_time: 2018-01-02
+  end_time: 2025-04-24
+  fit_start_time: 2018-01-02
+  fit_end_time: 2023-01-01
+  train: [2018-01-02, 2023-01-03]
+  valid: [2023-01-04, 2023-12-29]
+  test: [2024-01-02, 2025-04-24]
+
+model:
+  model_name: lstm
+  kwargs:
+    hidden_dim: 64
+    num_layers: 2
+    dropout: 0.1
+    epochs: 50
+    batch_size: 32
+    learning_rate: 0.001
+    optimizer: adam
+
+output_dir: ml_model/output/lstm
+checkpoints_output_dir: ml_model/checkpoints/lstm
+
+horizon: 1
+lookback: 20
+

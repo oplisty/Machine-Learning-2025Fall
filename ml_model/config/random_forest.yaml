@@ -12,16 +12,29 @@ model:
   model_name: random_forest
   kwargs:
     n_estimators: 600
-    max_depth: 10
+    max_depth: 30
     min_samples_split: 2
     min_samples_leaf: 2
     max_features: 0.7
     n_jobs: 20
     random_state: 42
+  
+  # 参数搜索配置（如果启用，将使用启发式搜索最佳参数）
+  # 基于训练集和验证集损失选择最佳参数（验证集 RMSE 最小）
+  # 注意：不对 n_estimators 进行调参
+  hyperparameter_search:
+    enabled: true  # 设置为 true 启用参数搜索
+    method: randomized  # randomized 或 grid
+    n_iter: 50  # 随机搜索的迭代次数
+    param_distributions:
+      max_depth: [10, 15, 20, 25, 30,40,50,60,70,80,90,100]
+      min_samples_split: [2, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+      min_samples_leaf: [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+      max_features: [0.5, 0.6, 0.7, 0.8, 0.9, "sqrt", "log2"]
 
 output_dir: ml_model/output/random_forest
 checkpoints_output_dir: ml_model/checkpoints/random_forest
 
 horizon: 1
-lookback: 10
+lookback: 50
 
