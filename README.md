@@ -58,11 +58,7 @@ python train_xgboost.py
 ##### Train with Custom Parameters
 
 ```bash
-# Modify forecast horizon and lookback window
-python train_xgboost.py horizon=3 lookback=20
-
-# Modify model hyperparameters
-python train_xgboost.py model.kwargs.max_depth=10 model.kwargs.n_estimators=500
+python train_xgboost.py horizon=1 lookback=10 data.data_path=data/your_data.csv data.train=[2018-01-02,2023-12-31] model.kwargs.max_depth=10
 ```
 
 #### Training Different Models
@@ -74,15 +70,6 @@ cd ml_model/model
 
 # XGBoost
 python train_{model}.py
-```
-
-#### Command-Line Parameter Overrides
-
-All models support configuration parameter overrides via command line:
-
-```bash
-# Modify forecast horizon
-python train_xgboost.py horizon=1 lookback=10 data.data_path=data/your_data.csv data.train=[2018-01-02,2023-12-31] model.kwargs.max_depth=10
 ```
 
 #### Hyperparameter Search (Random Forest)
