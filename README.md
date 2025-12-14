@@ -67,23 +67,13 @@ python train_xgboost.py model.kwargs.max_depth=10 model.kwargs.n_estimators=500
 
 #### Training Different Models
 
+Choose the model you want to train(LSTM,GRU,Xgboost,RandomForest)
+
 ```bash
 cd ml_model/model
 
 # XGBoost
-python train_xgboost.py
-
-# LightGBM
-python train_lightgbm.py
-
-# Random Forest
-python train_random_forest.py
-
-# LSTM
-python train_lstm.py
-
-# GRU
-python train_gru.py
+python train_{model}.py
 ```
 
 #### Command-Line Parameter Overrides
@@ -92,19 +82,7 @@ All models support configuration parameter overrides via command line:
 
 ```bash
 # Modify forecast horizon
-python train_xgboost.py horizon=5
-
-# Modify lookback window
-python train_xgboost.py lookback=30
-
-# Modify data path
-python train_xgboost.py data.data_path=data/your_data.csv
-
-# Modify training set time range
-python train_xgboost.py data.train=[2018-01-02,2023-12-31]
-
-# Combine multiple parameters
-python train_xgboost.py horizon=3 lookback=20 model.kwargs.max_depth=10
+python train_xgboost.py horizon=1 lookback=10 data.data_path=data/your_data.csv data.train=[2018-01-02,2023-12-31] model.kwargs.max_depth=10
 ```
 
 #### Hyperparameter Search (Random Forest)
@@ -160,23 +138,6 @@ lookback: 30    # Lookback window (days of history to use as input)
 
 After training, all results are saved in `ml_model/output/<model_name>/horizon_<horizon>/` directory:
 
-```
-output/
-└── xgboost/
-    └── horizon_5/
-        ├── train_results.csv          # Training set predictions
-        ├── valid_results.csv          # Validation set predictions
-        ├── test_results.csv           # Test set predictions
-        ├── metrics_log.txt            # Evaluation metrics log
-        ├── loss_curve_rmse.png        # Training/validation loss curve
-        ├── train_forecast_close.png   # Training set close price forecast
-        ├── train_forecast_volume.png  # Training set volume forecast
-        ├── valid_forecast_close.png   # Validation set close price forecast
-        ├── valid_forecast_volume.png  # Validation set volume forecast
-        ├── test_forecast_close.png    # Test set close price forecast
-        └── test_forecast_volume.png   # Test set volume forecast
-```
-
 #### Model Saving
 
 Trained models are saved in `ml_model/checkpoints/<model_name>/horizon_<horizon>/` directory:
@@ -215,38 +176,6 @@ ml_model/
 ├── requirements.txt        # Python dependencies
 └── README.md              # This file
 ```
-
-#### 🔍 FAQ
-
-##### 1. XGBoost Error "OpenMP runtime is not installed" on Linux
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install libomp-dev
-pip install --upgrade xgboost
-
-# CentOS/RHEL
-sudo yum install libgomp
-pip install --upgrade xgboost
-```
-
-##### 2. Empty Test Set
-
-Check if `fit_end_time` in the configuration file includes the test set time range. The system will automatically extend `fit_end_time` to the test set end time.
-
-##### 3. How to Modify Data Path
-
-```bash
-# Method 1: Command-line override
-python train_xgboost.py data.data_path=data/your_data.csv
-
-# Method 2: Directly edit configuration file
-# Edit data.data_path in config/xgboost.yaml
-```
-
-##### 4. How to View Training Progress
-
-Training scripts output real-time training progress and evaluation metrics. For XGBoost/LightGBM, you can view the training process through loss curve plots.
 
 #### Viewing Results
 
