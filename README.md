@@ -256,3 +256,6 @@ After training, you can view:
 2. **Prediction Charts**: `output/<model>/horizon_<n>/*_forecast_*.png`
 3. **Loss Curves**: `output/<model>/horizon_<n>/loss_curve_rmse.png`
 4. **Prediction Data**: `output/<model>/horizon_<n>/*_results.csv`
+
+### Strategy Implementation 
+
