@@ -28,27 +28,9 @@ conda activate mlhw
 pip install -r requirements.txt
 ```
 
-### Data Preprocessing and $\alpha$ Factor Mining
-
-
-
-### Model Building and Preprocessing 
-
-#### Prepare Data
-
-Ensure your data file is located at `data/data.csv` with the following columns:
-
-- `timestamps`: Timestamp (date format)
-- `open`: Opening price
-- `high`: Highest price
-- `low`: Lowest price
-- `close`: Closing price
-- `volume`: Trading volume
-- `amount`: Trading amount
-- 
-#### $\alpha$ Factor Mining
+### $\alpha$ Factor Mining
 We constructed a series of alpha factors using data prior to January 1, 2024, and then selected a subset with strong IC performance. The details are as follows.
-##### Factor Categories
+#### Factor Categories
 
 1. Momentum Factors
 
@@ -75,7 +57,7 @@ We constructed a series of alpha factors using data prior to January 1, 2024, an
 * Body-to-range and shadow ratios
 
 
-##### Single-Factor IC Analysis
+#### Single-Factor IC Analysis
 
 For each factor, the following metrics are computed:
 
@@ -90,11 +72,28 @@ abs(spearman_ic)
 
 which reflects the factor’s ability to explain **future return ranking**.
 
-##### Execution
+#### Execution
 
 ```bash
 python alpha_factor/alpha_factor_mining.py
 ```
+
+
+
+### Model Building and Preprocessing 
+
+#### Prepare Data
+
+Ensure your data file is located at `data/data.csv` with the following columns:
+
+- `timestamps`: Timestamp (date format)
+- `open`: Opening price
+- `high`: Highest price
+- `low`: Lowest price
+- `close`: Closing price
+- `volume`: Trading volume
+- `amount`: Trading amount
+
 
 #### Model Training
 
