@@ -1,3 +1,0 @@
-- horizon=3
-- lookback=20
-- model.kwargs.n_estimators=500
