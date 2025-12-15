@@ -223,4 +223,32 @@ After training, you can view:
 4. **Prediction Data**: `output/<model>/horizon_<n>/*_results.csv`
 
 ### Strategy Implementation 
+Instead of directly trading based on predicted price levels or individual factor signals, we construct a composite score $S_t$ that transforms heterogeneous information into a unified score. 
 
+#### Prepare Data
+* The prediction data `train_results.csv`, `test_results.csv` and `valid_results.csv` which are the output of the prediction model.
+* The factor data `alpha_factor_ic_ranking.csv` which is the output of the $\alpha$ factor mining part.
+
+#### Execute the strategy
+```bash
+cd script
+cd pre
+```
+Firstly change the path of the data since different models' outputs are not in the same file.
+
+Then,
+```bash
+python visual.py
+```
+This can help you find the best $w_{\alpha}$ and best $w_{pred}$ which are the weights of the score of factor and prediction data.
+
+```bash
+python best_q.py
+```
+This can help you find the best $q_{exit}$ and $q_{half}$ which mean the score thresholds for closing positions and holding partial positions.
+
+Finally change the $w_{pred}$, $w_{\alpha}$, $q_{exit}$ and $q_{half}$ in `try.py`.
+```bash
+python try.py
+```
+Then you can get your best backtest_results, including final_value,total_return,annual_return,annual_vol,sharpe and max_drawdown.

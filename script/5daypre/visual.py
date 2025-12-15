@@ -1,7 +1,7 @@
 """
 script/visualize_w_alpha_w_pred.py
 
-用于可视化 StrategyLongOnly_ConvictionFilter 策略中 w_alpha / w_pred 比值与总收益的关系。
+用于可视化 ConvictionFilterStrategy 策略中 w_alpha / w_pred 比值与总收益的关系。
 """
 
 import os
@@ -15,9 +15,10 @@ import matplotlib.pyplot as plt
 # 0. 路径 & 全局参数
 # =========================
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-XGB_OUT_DIR = os.path.join(BASE_DIR, "ml_model", "output", "xgboost")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(os.path.abspath(__file__)))))
+XGB_OUT_DIR = os.path.join(BASE_DIR, "ml_model", "output", "xgboost","horizon_5")
 FACTOR_IC_PATH = os.path.join(BASE_DIR, "alpha_factor", "alpha_factor_ic_ranking.csv")
+OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 TRAIN_START = pd.Timestamp("2018-01-01")
 TRAIN_END = pd.Timestamp("2023-12-31")
@@ -271,7 +272,7 @@ def run_optimization():
     df_res = pd.DataFrame(results)
 
     # Save results to CSV
-    output_csv = os.path.join(BASE_DIR, "script", "w_alpha_w_pred_optimization.csv")
+    output_csv = os.path.join(OUTPUT_DIR, "w_alpha_w_pred_optimization.csv")
     df_res.to_csv(output_csv, index=False)
     print(f"Data saved to: {output_csv}")
 
@@ -283,23 +284,26 @@ def run_optimization():
     print(f"Best w_pred: {best_row['w_pred']:.4f}")
 
     # 4. 可视化 - 通用美化设置
+    # 使用简洁风格，去掉网格
     plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['axes.grid'] = False
+    plt.rcParams['axes.spines.top'] = False
+    plt.rcParams['axes.spines.right'] = False
 
     # Filter out infinity for plotting
     df_plot = df_res[df_res["ratio"] != float('inf')].copy()
     
-    # Plot 1: Original Ratio (Linear Scale)
+    # --- Plot 1: Original Ratio (Linear Scale) ---
     plt.figure(figsize=(10, 6))
-    plt.plot(df_plot["ratio"], df_plot["total_return"], color='#1f77b4', linewidth=2, marker='o', markersize=4)
+    plt.plot(df_plot["ratio"], df_plot["total_return"], color='#1f77b4', linewidth=2)
     plt.title("Total Return vs Ratio (w_alpha / w_pred)", fontsize=14, fontweight='bold')
     plt.xlabel("Ratio (w_alpha / w_pred)", fontsize=12)
     plt.ylabel("Total Return", fontsize=12)
-    # No grid
     
     # Mark max
     if best_row["ratio"] != float('inf'):
         plt.plot(best_row["ratio"], best_row["total_return"], color='#d62728', marker='*', markersize=15, label='Max Return')
-        plt.annotate(f"Max: {best_row['total_return']:.2%}\nRatio: {best_row['ratio']:.2f}\nw_a: {best_row['w_alpha']:.2f}, w_p: {best_row['w_pred']:.2f}",
+        plt.annotate(f"Max: {best_row['total_return']:.2%}\nRatio: {best_row['ratio']:.2f}",
                      xy=(best_row["ratio"], best_row["total_return"]), 
                      xytext=(best_row["ratio"], best_row["total_return"] + 0.05),
                      arrowprops=dict(facecolor='black', arrowstyle='->'),
@@ -307,21 +311,21 @@ def run_optimization():
     else:
         print("Best result is at ratio=inf (w_alpha=1.0, w_pred=0.0)")
 
-    plt.legend(frameon=True)
+    plt.legend(frameon=False)
     plt.tight_layout()
     
-    output_plot = os.path.join(BASE_DIR, "script", "w_alpha_w_pred_optimization.pdf")
+    output_plot = os.path.join(OUTPUT_DIR, "w_alpha_w_pred_optimization.pdf")
     plt.savefig(output_plot, format='pdf')
     print(f"\nPlot saved to: {output_plot}")
 
-    # 5. 局部放大图 (Zoomed-in Plot)
+    # --- Plot 2: 局部放大图 (Zoomed-in Plot) ---
     if best_row["ratio"] != float('inf'):
         df_plot_reset = df_plot.reset_index(drop=True)
         best_mask = (df_plot_reset["ratio"] - best_row["ratio"]).abs() < 1e-9
         if best_mask.any():
             best_idx_loc = df_plot_reset.index[best_mask][0]
-            start_pos = max(0, best_idx_loc - 5)
-            end_pos = min(len(df_plot_reset), best_idx_loc + 6)
+            start_pos = max(0, best_idx_loc - 10)
+            end_pos = min(len(df_plot_reset), best_idx_loc + 11)
             df_zoom = df_plot_reset.iloc[start_pos:end_pos]
 
             plt.figure(figsize=(10, 6))
@@ -329,7 +333,6 @@ def run_optimization():
             plt.title("Total Return vs Ratio (Zoomed In)", fontsize=14, fontweight='bold')
             plt.xlabel("Ratio (w_alpha / w_pred)", fontsize=12)
             plt.ylabel("Total Return", fontsize=12)
-            # No grid
             
             plt.plot(best_row["ratio"], best_row["total_return"], color='#d62728', marker='*', markersize=15, label='Max Return')
             
@@ -342,12 +345,41 @@ def run_optimization():
                          xytext=(best_row["ratio"], best_row["total_return"] + offset),
                          arrowprops=dict(facecolor='black', arrowstyle='->'),
                          horizontalalignment='center', fontsize=10)
-            plt.legend(frameon=True)
+            plt.legend(frameon=False)
             plt.tight_layout()
 
-            output_zoom = os.path.join(BASE_DIR, "script", "w_alpha_w_pred_optimization_zoom.pdf")
+            output_zoom = os.path.join(OUTPUT_DIR, "w_alpha_w_pred_optimization_zoom.pdf")
             plt.savefig(output_zoom, format='pdf')
             print(f"Zoomed plot saved to: {output_zoom}")
+
+    # --- Plot 3: Log Scale (lg(Ratio)) ---
+    # Filter out ratio=0 for log scale
+    df_log = df_plot[df_plot["ratio"] > 0].copy()
+    if not df_log.empty:
+        df_log["log_ratio"] = np.log10(df_log["ratio"])
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(df_log["log_ratio"], df_log["total_return"], color='#2ca02c', linewidth=2)
+        plt.title("Total Return vs Log10(Ratio)", fontsize=14, fontweight='bold')
+        plt.xlabel("Log10(Ratio)", fontsize=12)
+        plt.ylabel("Total Return", fontsize=12)
+        
+        # Mark max
+        if best_row["ratio"] > 0 and best_row["ratio"] != float('inf'):
+            log_best = np.log10(best_row["ratio"])
+            plt.plot(log_best, best_row["total_return"], color='#d62728', marker='*', markersize=15, label='Max Return')
+            plt.annotate(f"Max: {best_row['total_return']:.2%}\nlg(Ratio): {log_best:.2f}",
+                         xy=(log_best, best_row["total_return"]), 
+                         xytext=(log_best, best_row["total_return"] + 0.05),
+                         arrowprops=dict(facecolor='black', arrowstyle='->'),
+                         horizontalalignment='center', fontsize=10)
+        
+        plt.legend(frameon=False)
+        plt.tight_layout()
+        
+        output_log = os.path.join(OUTPUT_DIR, "w_alpha_w_pred_optimization_log.pdf")
+        plt.savefig(output_log, format='pdf')
+        print(f"Log scale plot saved to: {output_log}")
 
     # 6. Log Ratio Plot
     df_log = df_res[(df_res["ratio"] > 0) & (df_res["ratio"] != float('inf'))].copy()

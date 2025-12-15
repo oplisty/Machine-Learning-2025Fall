@@ -27,8 +27,8 @@ import backtrader as bt
 # 0. 路径 & 全局参数
 # =========================
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-XGB_OUT_DIR = os.path.join(BASE_DIR, "ml_model", "output", "xgboost")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+XGB_OUT_DIR = os.path.join(BASE_DIR, "ml_model", "output", "xgboost","horizon_3")
 FACTOR_IC_PATH = os.path.join(BASE_DIR, "alpha_factor", "alpha_factor_ic_ranking.csv")
 
 TRAIN_START = pd.Timestamp("2018-01-01")
@@ -52,15 +52,15 @@ def load_xgb_results_and_features():
         - r_pred：预测日收益
         - price_vwap_diff, ma_5, ma_20, ma_60
         - volatility_10, volatility_20
-        - z_r_pred：预测收益标准化（仅用训练期均值/方差）
-        - alpha_score：多因子综合打分（仅使用 IC 文件里列出的、且本脚本已构造的因子）
+        - z_r_pred：预测收益标准化
+        - alpha_score：多因子综合打分
     """
     train_path = os.path.join(XGB_OUT_DIR, "train_results.csv")
     valid_path = os.path.join(XGB_OUT_DIR, "valid_results.csv")
     test_path = os.path.join(XGB_OUT_DIR, "test_results.csv")
 
     if not (os.path.exists(train_path) and os.path.exists(valid_path) and os.path.exists(test_path)):
-        raise FileNotFoundError("找不到 XGBoost train/valid/test 结果，请检查 ml_model/output/xgboost 目录。")
+        raise FileNotFoundError("找不到 XGBoost train/valid/test 结果，请检查 ml_model/output/xgboost/horizon_3 目录。")
 
     train_df = pd.read_csv(train_path)
     valid_df = pd.read_csv(valid_path)
@@ -313,18 +313,18 @@ class BuyAndHoldStrategy(BaseMLStrategy):
 # 5. 策略 A：不做空（Long-only 强过滤）
 # =========================
 
-class StrategyLongOnly_ConvictionFilter(BaseMLStrategy):
+class ConvictionFilterStrategy(BaseMLStrategy):
     """
     仓位 ∈ {0.0, 0.5, 1.0}
     核心：尽量保持满仓，只有在极弱信号时退出，避免上涨行情跑输基准。
     """
     params = dict(
-        name="StrategyLongOnly_ConvictionFilter",
+        name="Conviction_Filter_Strategy",
         lookback=120,
-        w_pred=0.78,
-        w_alpha=0.22,
-        q_exit=0.05,   # bottom 5% 才空仓
-        q_half=0.11,   # bottom 5~25% 半仓
+        w_pred=0.7,
+        w_alpha=0.3,
+        q_exit=0.06,   # bottom 6% 才空仓
+        q_half=0.09,   # bottom 6~9% 半仓
     )
 
     def __init__(self):
@@ -352,51 +352,6 @@ class StrategyLongOnly_ConvictionFilter(BaseMLStrategy):
         else:
             return 1.0
 
-
-# =========================
-# 6. 策略 B：允许做空（Long-Short 分位数方向策略）
-# =========================
-
-class StrategyLongShort_QuantileDirectional(BaseMLStrategy):
-    """
-    允许做空、不加杠杆：仓位 ∈ {-1.0, 0.0, +1.0}
-    强信号才下注：top 20% 做多，bottom 20% 做空，中间观望。
-    """
-    params = dict(
-        name="StrategyLongShort_QuantileDirectional",
-        lookback=120,
-        w_pred=0.6,
-        w_alpha=0.4,
-        q_long=0.90,   # top 20% 做多
-        q_short=0.10,  # bottom 20% 做空
-    )
-
-    def __init__(self):
-        super().__init__()
-        self.score_hist = []
-
-    def _get_target_percent(self):
-        z = float(self.z_r_pred[0]) if not np.isnan(self.z_r_pred[0]) else 0.0
-        a = float(self.alpha_score[0]) if not np.isnan(self.alpha_score[0]) else 0.0
-        score = self.p.w_pred * z + self.p.w_alpha * a
-        self.score_hist.append(score)
-
-        # 前期阈值不稳：先观望
-        if len(self.score_hist) < max(30, self.p.lookback // 2):
-            return 0.0
-
-        hist = np.array(self.score_hist[-self.p.lookback:])
-        q_long = float(np.quantile(hist, self.p.q_long))
-        q_short = float(np.quantile(hist, self.p.q_short))
-
-        if score >= q_long:
-            return 1.0
-        elif score <= q_short:
-            return -1.0
-        else:
-            return 0.0
-
-
 # =========================
 # 7. 运行回测并输出对比结果
 # =========================
@@ -421,8 +376,8 @@ def run_backtest():
 
     strategies = [
         BuyAndHoldStrategy,
-        StrategyLongOnly_ConvictionFilter,
-        StrategyLongShort_QuantileDirectional,
+        ConvictionFilterStrategy,
+        
     ]
 
     summary = []
