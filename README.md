@@ -12,7 +12,7 @@ This project is aimed at building a Machine Learning model to implement quantita
 
 ## FrameWork
 
-![workflow](workflow.png)
+![workflow](image/workflow.png)
 
 
 
@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ### $\alpha$ Factor Mining
 
-![pipeline](pipeline.png)
+![pipeline](image/pipeline.png)
 
 #### Factor Minining
 
