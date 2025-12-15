@@ -45,6 +45,56 @@ Ensure your data file is located at `data/data.csv` with the following columns:
 - `close`: Closing price
 - `volume`: Trading volume
 - `amount`: Trading amount
+- 
+#### $\alpha$ Factor Mining
+We constructed a series of alpha factors using data prior to January 1, 2024, and then selected a subset with strong IC performance. The details are as follows.
+##### Factor Categories
+
+1. Momentum Factors
+
+* Returns: `ret_1 / ret_5 / ret_10 / ret_20`
+* Moving averages: `ma_5 / ma_20`
+* MA structure: `ma_5_20_diff / ma_slope`
+* Technical indicators: `rsi_14 / macd_*`
+
+2. Volatility Factors
+
+* Return volatility: `volatility_10 / volatility_20`
+* High–low range volatility: `hl_vol`
+
+3. Price–Volume Factors
+
+* Volume rate of change: `vol_roc_5`
+* VWAP deviation: `price_vwap_diff`
+* OBV (On-Balance Volume)
+
+4. Candlestick Structure Factors
+
+* Candle body length
+* Upper / lower shadows
+* Body-to-range and shadow ratios
+
+
+##### Single-Factor IC Analysis
+
+For each factor, the following metrics are computed:
+
+* **Pearson IC**: measures linear correlation
+* **Spearman Rank IC**: measures rank-based correlation
+
+Factors are ranked by:
+
+```text
+abs(spearman_ic)
+```
+
+which reflects the factor’s ability to explain **future return ranking**.
+
+##### Execution
+
+```bash
+python alpha_factor/alpha_factor_mining.py
+```
 
 #### Model Training
 
