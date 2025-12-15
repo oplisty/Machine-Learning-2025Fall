@@ -8,3 +8,6 @@ torch>=2.0.0
 pyyaml>=6.0
 hydra-core>=1.2.0
 matplotlib>=3.5.0
+backtrader>=1.9.78.123
+PyMuPDF>=1.22.0
+Pillow>=9.0.0
