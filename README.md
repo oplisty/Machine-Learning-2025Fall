@@ -232,7 +232,7 @@ Instead of directly trading based on predicted price levels or individual factor
 #### Execute the strategy
 ```bash
 cd script
-cd pre
+cd final
 ```
 Firstly change the path of the data since different models' outputs are not in the same file.
 
@@ -249,6 +249,16 @@ This can help you find the best $q_{exit}$ and $q_{half}$ which mean the score t
 
 Finally change the $w_{pred}$, $w_{\alpha}$, $q_{exit}$ and $q_{half}$ in `try.py`.
 ```bash
-python try.py
+python bt.py
 ```
-Then you can get your best backtest_results, including final_value,total_return,annual_return,annual_vol,sharpe and max_drawdown.
+Then you can get your best backtest_results, including final_value,total_return,annual_return,annual_vol,sharpe and max_drawdown.You can also get some pictures and data:
+* `backtest_results_longonly_longshort.csv`
+* `daily_Benchmark_Buyandsold.csv`
+* `daily_Conviction_Filter_Strategy.csv`
+* `model_eval_summary.csv`
+* `report_drawndown_curve.pdf`
+* `report_nav_curve.pdf`
+* `report_position_curve.pdf`
+* `report_quantile_return.pdf`
+* `report_score_thresholds.pdf`
+* `score_quantile_return.csv`
