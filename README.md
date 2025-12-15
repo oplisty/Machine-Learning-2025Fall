@@ -29,54 +29,101 @@ pip install -r requirements.txt
 ```
 
 ### $\alpha$ Factor Mining
-We constructed a series of alpha factors using data prior to January 1, 2024, and then selected a subset with strong IC performance. The details are as follows.
-#### Factor Categories
 
-1. Momentum Factors
+![pipeline](pipeline.png)
 
-* Returns: `ret_1 / ret_5 / ret_10 / ret_20`
-* Moving averages: `ma_5 / ma_20`
-* MA structure: `ma_5_20_diff / ma_slope`
-* Technical indicators: `rsi_14 / macd_*`
+#### Factor Mining
 
-2. Volatility Factors
+| 类别            | 因子名称          | 计算公式/描述                               |
+| --------------- | ----------------- | ------------------------------------------- |
+| **动量因子**    | `ret_1`           | 1日收益率                                   |
+|                 | `ret_5`           | 5日收益率                                   |
+|                 | `ret_10`          | 10日收益率                                  |
+|                 | `ret_20`          | 20日收益率                                  |
+|                 | `ma_5`            | 5日移动平均线                               |
+|                 | `ma_20`           | 20日移动平均线                              |
+|                 | `ma_5_20_diff`    | 5日与20日移动平均线差值：`ma_5 - ma_20`     |
+|                 | `ma_slope`        | 移动平均线斜率：`ma_5.diff()`               |
+|                 | `rsi_14`          | 14日相对强弱指数（自主实现，不使用TA-Lib）  |
+|                 | `macd_dif`        | MACD差值（DIF）                             |
+|                 | `macd_dea`        | MACD信号线（DEA）                           |
+|                 | `macd`            | MACD柱状图                                  |
+| **波动率因子**  | `volatility_10`   | 10日收益率波动率（基于`ret_1`的滚动标准差） |
+|                 | `volatility_20`   | 20日收益率波动率（基于`ret_1`的滚动标准差） |
+|                 | `hl_vol`          | 高低波动率：`hl_range / close`              |
+| **价量因子**    | `vol_roc_5`       | 5日成交量变化率：`volume.pct_change(5)`     |
+|                 | `price_vwap_diff` | VWAP偏离度：`close / vwap - 1`              |
+|                 | `obv`             | 能量潮指标：`cumsum(sign(ret_1) * volume)`  |
+| **K线结构因子** | `body`            | K线实体长度：`abs(close - open)`            |
+|                 | `upper_shadow`    | 上影线长度                                  |
+|                 | `lower_shadow`    | 下影线长度                                  |
+|                 | `body_ratio`      | 实体比例：`body / hl_range`                 |
+|                 | `upper_ratio`     | 上影线比例：`upper_shadow / hl_range`       |
+|                 | `lower_ratio`     | 下影线比例：`lower_shadow / hl_range`       |
 
-* Return volatility: `volatility_10 / volatility_20`
-* High–low range volatility: `hl_vol`
+#### Single‑Factor IC and Layered Test
 
-3. Price–Volume Factors
+For each factor \(f\) in `factors`, we compute its correlation with the 5‑day forward return `future_ret_5` on the pre‑2024 sample:
 
-* Volume rate of change: `vol_roc_5`
-* VWAP deviation: `price_vwap_diff`
-* OBV (On-Balance Volume)
+- **Pearson IC**: `pearson_ic = corr(f, future_ret_5)`
+- **Spearman Rank IC**: `spearman_ic = corr(f, future_ret_5, method="spearman")`
 
-4. Candlestick Structure Factors
-
-* Candle body length
-* Upper / lower shadows
-* Body-to-range and shadow ratios
-
-
-#### Single-Factor IC Analysis
-
-For each factor, the following metrics are computed:
-
-* **Pearson IC**: measures linear correlation
-* **Spearman Rank IC**: measures rank-based correlation
-
-Factors are ranked by:
+We then define:
 
 ```text
-abs(spearman_ic)
+abs_rank_ic = abs(spearman_ic)
 ```
 
-which reflects the factor’s ability to explain **future return ranking**.
+and rank factors by `abs_rank_ic` to measure their ability to explain **future return ranking**.  
+The full ranking is saved to:
 
-#### Execution
+- `alpha_factor/output/alpha_factor_ic_ranking.csv`
+
+In addition, the script performs a simple **n‑bucket layered return test** for the top 5 factors:
+
+- Bucket data into quantiles of factor values (default 5 layers).
+- For each layer, compute the average `future_ret_5`.
+- Inspect whether the expected return is monotonic with respect to factor level.
+
+#### Execution (scripts)
+
+All scripts are located under `alpha_factor/script/`. Run them **from the project root** so that relative paths work:
 
 ```bash
-python alpha_factor/script/alpha_factor_mining.py
+cd Machine-Learning-2025Fall
 ```
+
+1. **Factor mining & IC ranking**
+
+   ```bash
+   python alpha_factor/script/alpha_factor_mining.py
+   ```
+
+   - Input: `data/data.csv`
+   - Output:
+     - `alpha_factor/output/alpha_factor_ic_ranking.csv` — full IC table and ranking
+
+2. **IC ranking visualization**
+
+   ```bash
+   python alpha_factor/script/plot_factor_rank.py
+   ```
+
+   - Input: `alpha_factor/output/alpha_factor_ic_ranking.csv`
+   - Output (in `alpha_factor/output/`):
+     - `top_factors_by_abs_rank_ic.png/.pdf` — horizontal bar plot of |Rank IC|
+     - `pearson_vs_spearman_ic.png/.pdf` — side‑by‑side Pearson vs Spearman IC
+
+3. **Factor report (layered returns & rolling IC)**
+
+   ```bash
+   python alpha_factor/script/factor_report.py
+   ```
+
+   - Input: `data/data.csv`
+   - Output (in `alpha_factor/output/factor_report_plots/`), for each selected factor:
+     - `<factor>_longshort.png/.pdf` — long‑short cumulative return by factor quantiles
+     - `<factor>_ic_timeseries.png/.pdf` — 120‑day rolling Spearman IC time series
 
 
 
