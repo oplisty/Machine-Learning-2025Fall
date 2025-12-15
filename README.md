@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 ![pipeline](pipeline.png)
 
-#### Factor Mining
+#### Factor Minining
 
 | 类别            | 因子名称          | 计算公式/描述                               |
 | --------------- | ----------------- | ------------------------------------------- |
@@ -60,30 +60,6 @@ pip install -r requirements.txt
 |                 | `body_ratio`      | 实体比例：`body / hl_range`                 |
 |                 | `upper_ratio`     | 上影线比例：`upper_shadow / hl_range`       |
 |                 | `lower_ratio`     | 下影线比例：`lower_shadow / hl_range`       |
-
-#### Single‑Factor IC and Layered Test
-
-For each factor \(f\) in `factors`, we compute its correlation with the 5‑day forward return `future_ret_5` on the pre‑2024 sample:
-
-- **Pearson IC**: `pearson_ic = corr(f, future_ret_5)`
-- **Spearman Rank IC**: `spearman_ic = corr(f, future_ret_5, method="spearman")`
-
-We then define:
-
-```text
-abs_rank_ic = abs(spearman_ic)
-```
-
-and rank factors by `abs_rank_ic` to measure their ability to explain **future return ranking**.  
-The full ranking is saved to:
-
-- `alpha_factor/output/alpha_factor_ic_ranking.csv`
-
-In addition, the script performs a simple **n‑bucket layered return test** for the top 5 factors:
-
-- Bucket data into quantiles of factor values (default 5 layers).
-- For each layer, compute the average `future_ret_5`.
-- Inspect whether the expected return is monotonic with respect to factor level.
 
 #### Execution (scripts)
 
@@ -168,20 +144,6 @@ cd ml_model/model
 python train_{model}.py
 ```
 
-#### Hyperparameter Search (Random Forest)
-
-Random Forest model supports automatic hyperparameter search. Enable it in the configuration file:
-
-```yaml
-# config/random_forest.yaml
-hyperparameter_search:
-  enabled: true
-  method: randomized
-  n_iter: 50
-```
-
-The best parameters will be automatically searched during training and saved to `best_parameters.yaml` and `best_parameters.txt` in the output directory.
-
 #### ⚙Configuration
 
 All configuration files are located in `ml_model/config/` directory and use YAML format:
@@ -210,12 +172,6 @@ checkpoints_output_dir: ml_model/checkpoints/xgboost
 horizon: 5      # Forecast horizon (days ahead to predict)
 lookback: 30    # Lookback window (days of history to use as input)
 ```
-
-#### Key Parameters
-
-- **`horizon`**: Forecast window size, i.e., how many days ahead to predict
-- **`lookback`**: Lookback window size, i.e., how many days of historical data to use as input features
-- **`data.train/valid/test`**: Time series data split, ordered chronologically to avoid data leakage
 
 #### 📊 Output
 
