@@ -75,7 +75,7 @@ which reflects the factor’s ability to explain **future return ranking**.
 #### Execution
 
 ```bash
-python alpha_factor/alpha_factor_mining.py
+python alpha_factor/script/alpha_factor_mining.py
 ```
 
 
