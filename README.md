@@ -10,7 +10,7 @@ This project is aimed at building a Machine Learning model to implement quantita
 * The strategy must aim to keep the maximum drawdown as low as possible.
 * Create visualizations of the final investment results, evaluate the results against actual market data, and conduct a comprehensive assessment of the strategy's and model's overall effectiveness.
 
-## FrameWork
+## Framework
 
 ![workflow](image/workflow.png)
 
@@ -28,11 +28,11 @@ conda activate mlhw
 pip install -r requirements.txt
 ```
 
-### $\alpha$ Factor Mining
+## $\alpha$ Factor Mining
 
 ![pipeline](image/pipeline.png)
 
-#### Factor Minining
+### Factor Minining
 
 | 类别            | 因子名称          | 计算公式/描述                               |
 | --------------- | ----------------- | ------------------------------------------- |
@@ -61,7 +61,7 @@ pip install -r requirements.txt
 |                 | `upper_ratio`     | 上影线比例：`upper_shadow / hl_range`       |
 |                 | `lower_ratio`     | 下影线比例：`lower_shadow / hl_range`       |
 
-#### Execution (scripts)
+### Execution (scripts)
 
 All scripts are located under `alpha_factor/script/`. Run them **from the project root** so that relative paths work:
 
@@ -103,9 +103,9 @@ cd Machine-Learning-2025Fall
 
 
 
-### Model Building and Preprocessing 
+## Model Building and Preprocessing 
 
-#### Prepare Data
+### Prepare Data
 
 Ensure your data file is located at `data/data.csv` with the following columns:
 
@@ -118,22 +118,22 @@ Ensure your data file is located at `data/data.csv` with the following columns:
 - `amount`: Trading amount
 
 
-#### Model Training
+### Model Training
 
-##### Train XGBoost with Default Configuration
+#### Train XGBoost with Default Configuration
 
 ```bash
 cd ml_model/model
 python train_xgboost.py
 ```
 
-##### Train with Custom Parameters
+#### Train with Custom Parameters
 
 ```bash
 python train_xgboost.py horizon=1 lookback=10 data.data_path=data/your_data.csv data.train=[2018-01-02,2023-12-31] model.kwargs.max_depth=10
 ```
 
-#### Training Different Models
+### Training Different Models
 
 Choose the model you want to train(LSTM,GRU,Xgboost,RandomForest)
 
@@ -144,7 +144,7 @@ cd ml_model/model
 python train_{model}.py
 ```
 
-#### ⚙Configuration
+### ⚙Configuration
 
 All configuration files are located in `ml_model/config/` directory and use YAML format:
 
@@ -173,18 +173,18 @@ horizon: 5      # Forecast horizon (days ahead to predict)
 lookback: 30    # Lookback window (days of history to use as input)
 ```
 
-#### 📊 Output
+### 📊 Output
 
 After training, all results are saved in `ml_model/output/<model_name>/horizon_<horizon>/` directory:
 
-#### Model Saving
+### Model Saving
 
 Trained models are saved in `ml_model/checkpoints/<model_name>/horizon_<horizon>/` directory:
 
 - **XGBoost/LightGBM/Random Forest**: `*.pkl` (pickle format)
 - **LSTM/GRU**: `*.pth` (PyTorch format) + `scaler_X.pkl`, `scaler_y.pkl` (scalers)
 
-#### 📁 Project Structure
+### 📁 Project Structure
 
 ```
 ml_model/
@@ -216,7 +216,7 @@ ml_model/
 └── README.md              # This file
 ```
 
-#### Viewing Results
+### Viewing Results
 
 After training, you can view:
 
@@ -225,13 +225,13 @@ After training, you can view:
 3. **Loss Curves**: `output/<model>/horizon_<n>/loss_curve_rmse.png`
 4. **Prediction Data**: `output/<model>/horizon_<n>/*_results.csv`
 
-### Strategy Implementation 
+## Strategy Implementation 
 
 Instead of directly trading on raw predicted prices or single-factor signals, we build a **composite conviction score**  
 $S_t = w_{\text{pred}} \cdot z(r_{\text{pred},t}) + w_{\alpha} \cdot \alpha_t$  
 and feed it into a Backtrader strategy (`ConvictionFilterStrategy`) to drive positions (0 / 0.5 / 1).
 
-#### Prepare Data
+### Prepare Data
 
 From previous steps you should already have:
 
@@ -244,7 +244,7 @@ From previous steps you should already have:
 
 All strategy scripts are under the `strategy/` folder and are designed to be run **from the project root**.
 
-#### 1. Full backtest + report (`strategy/backtest.py`)
+### 1. Full backtest + report (`strategy/backtest.py`)
 
 Run a one‑shot backtest (benchmark vs conviction strategy) and generate all CSV/PDF reports:
 
@@ -269,7 +269,7 @@ python strategy/backtest.py \
   - `report_score_thresholds.pdf` — score and rolling thresholds  
   - `report_quantile_return.pdf` — quantile return bar chart
 
-#### 2. Search best $w_{\alpha}$ / $w_{\text{pred}}$ (`strategy/best_w.py`)
+### 2. Search best $w_{\alpha}$ / $w_{\text{pred}}$ (`strategy/best_w.py`)
 
 This script scans different ratios of $w_{\alpha} / w_{\text{pred}}$ for `ConvictionFilterStrategy` and finds the one with the highest total return.
 
@@ -287,7 +287,7 @@ python strategy/best_w.py
 
 You can then plug the best $w_{\alpha}$ and $w_{\text{pred}}$ back into the strategy parameters.
 
-#### 3. Search best thresholds $q_{\text{exit}}$ / $q_{\text{half}}$ (`strategy/best_q.py`)
+### 3. Search best thresholds $q_{\text{exit}}$ / $q_{\text{half}}$ (`strategy/best_q.py`)
 
 This script searches score quantile thresholds:
 
@@ -305,7 +305,7 @@ python strategy/best_q.py
 
 After identifying the best thresholds, update the corresponding strategy parameters (e.g. in `ConvictionFilterStrategy`) and re‑run `strategy/backtest.py`.
 
-#### 4. Other strategy templates (`strategy/other_strategies_test/`)
+### 4. Other strategy templates (`strategy/other_strategies_test/`)
 
 The `other_strategies_test/` folder contains alternative Backtrader implementations that you can use as templates:
 
@@ -323,7 +323,7 @@ python strategy/other_strategies_test/bt_schemeA_ml_trend.py
 
 You can read and modify these scripts to customize position rules, leverage, and risk controls.
 
-#### 5. Historical examples (`strategy/examples/`)
+### 5. Historical examples (`strategy/examples/`)
 
 The `strategy/examples/` directory keeps several historical experiment scripts (`pre/`, `1daypre/`, `3daypre/`, `5daypre/`, `final/`).  
 They show how the pipeline evolved but are **not required** for basic usage.  
