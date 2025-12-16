@@ -235,8 +235,12 @@ Instead of directly trading based on predicted price levels or individual factor
 #### Execute the strategy
 ```bash
 cd script
-cd final
+python bt.py train_results_path test_results_path valid_results_path alpha_factor_ic_path
 ```
+Then you can get the final results of our strategy in the folder named "outputs".
+
+If you change the original data of the stock and finish the steps of prediction and alpha factor,then you can follow the following steps:
+
 Firstly change the path of the data since different models' outputs are not in the same file.
 
 Then,
@@ -252,7 +256,7 @@ This can help you find the best $q_{exit}$ and $q_{half}$ which mean the score t
 
 Finally change the $w_{pred}$, $w_{\alpha}$, $q_{exit}$ and $q_{half}$ in `try.py`.
 ```bash
-python bt.py
+python bt.py train_results_path test_results_path valid_results_path alpha_factor_ic_path
 ```
 Then you can get your best backtest_results, including final_value,total_return,annual_return,annual_vol,sharpe and max_drawdown.You can also get some pictures and data:
 * `backtest_results_longonly_longshort.csv`：策略绩效汇总
