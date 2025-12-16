@@ -255,13 +255,12 @@ Finally change the $w_{pred}$, $w_{\alpha}$, $q_{exit}$ and $q_{half}$ in `try.p
 python bt.py
 ```
 Then you can get your best backtest_results, including final_value,total_return,annual_return,annual_vol,sharpe and max_drawdown.You can also get some pictures and data:
-* `backtest_results_longonly_longshort.csv`
-* `daily_Benchmark_Buyandsold.csv`
-* `daily_Conviction_Filter_Strategy.csv`
-* `model_eval_summary.csv`
-* `report_drawndown_curve.pdf`
-* `report_nav_curve.pdf`
-* `report_position_curve.pdf`
-* `report_quantile_return.pdf`
-* `report_score_thresholds.pdf`
-* `score_quantile_return.csv`
+* `backtest_results_longonly_longshort.csv`：策略绩效汇总
+* `daily_Benchmark_Buyandsold.csv`：基准每日：equity/nav/drawdown/position/score
+* `daily_Conviction_Filter_Strategy.csv`：策略每日：equity/nav/drawdown/position/score
+* `model_eval_summary.csv`：模型 vs 真实数据评估（train/valid/test）
+* `report_drawndown_curve.pdf`：策略与基准的最大回撤折线对比
+* `report_nav_curve.pdf`：净值曲线
+* `report_position_curve.pdf`：仓位曲线
+* `report_quantile_return.pdf`：分位收益图
+* `report_score_thresholds.pdf`：score + 阈值
