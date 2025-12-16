@@ -228,7 +228,7 @@ After training, you can view:
 ### Strategy Implementation 
 
 Instead of directly trading on raw predicted prices or single-factor signals, we build a **composite conviction score**  
-\( S_t = w_{\text{pred}} \cdot z(r_{\text{pred},t}) + w_{\alpha} \cdot \alpha\_t \)  
+$S_t = w_{\text{pred}} \cdot z(r_{\text{pred},t}) + w_{\alpha} \cdot \alpha_t$  
 and feed it into a Backtrader strategy (`ConvictionFilterStrategy`) to drive positions (0 / 0.5 / 1).
 
 #### Prepare Data
@@ -269,9 +269,9 @@ python strategy/backtest.py \
   - `report_score_thresholds.pdf` — score and rolling thresholds  
   - `report_quantile_return.pdf` — quantile return bar chart
 
-#### 2. Search best \(w_{\alpha}\) / \(w_{\text{pred}}\) (`strategy/best_w.py`)
+#### 2. Search best $w_{\alpha}$ / $w_{\text{pred}}$ (`strategy/best_w.py`)
 
-This script scans different ratios of \(w_{\alpha} / w_{\text{pred}}\) for `ConvictionFilterStrategy` and finds the one with the highest total return.
+This script scans different ratios of $w_{\alpha} / w_{\text{pred}}$ for `ConvictionFilterStrategy` and finds the one with the highest total return.
 
 ```bash
 cd Machine-Learning-2025Fall
@@ -285,14 +285,14 @@ python strategy/best_w.py
   - `w_alpha_w_pred_optimization_zoom.pdf` — zoomed‑in view near the optimum
   - `w_alpha_w_pred_optimization_log.pdf` — log‑ratio view
 
-You can then plug the best \(w_{\alpha}\) and \(w_{\text{pred}}\) back into the strategy parameters.
+You can then plug the best $w_{\alpha}$ and $w_{\text{pred}}$ back into the strategy parameters.
 
-#### 3. Search best thresholds \(q_{\text{exit}}\) / \(q_{\text{half}}\) (`strategy/best_q.py`)
+#### 3. Search best thresholds $q_{\text{exit}}$ / $q_{\text{half}}$ (`strategy/best_q.py`)
 
 This script searches score quantile thresholds:
 
-- \(q_{\text{exit}}\): below this quantile → fully exit (0 position)  
-- \(q_{\text{half}}\): between \(q_{\text{exit}}\) and \(q_{\text{half}}\) → half position (0.5); above \(q_{\text{half}}\) → full position (1.0)
+- $q_{\text{exit}}$: below this quantile → fully exit (0 position)  
+- $q_{\text{half}}$: between $q_{\text{exit}}$ and $q_{\text{half}}$ → half position (0.5); above $q_{\text{half}}$ → full position (1.0)
 
 ```bash
 cd Machine-Learning-2025Fall
