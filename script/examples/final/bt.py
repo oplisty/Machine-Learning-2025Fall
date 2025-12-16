@@ -25,11 +25,13 @@ Backtrader 回测 + 自动完成报告要求的评估与可视化输出（PDF �
 
 import os
 import math
+import argparse
 import pandas as pd
 import numpy as np
 import backtrader as bt
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 
 # =========================
@@ -57,7 +59,7 @@ mpl.rcParams["ps.fonttype"] = 42
 # 1. 数据准备：合并预测结果 + 构造因子 & alpha_score
 # =========================
 
-def load_xgb_results_and_features():
+def load_xgb_results_and_features(train_path, valid_path, test_path, alpha_path):
     """
     读取 train/valid/test 预测结果，并合并成一个 DataFrame，
     构造：
@@ -67,12 +69,8 @@ def load_xgb_results_and_features():
         - z_r_pred：预测收益在训练期的标准化
         - alpha_score：多因子综合打分（IC 加权）
     """
-    train_path = os.path.join(XGB_OUT_DIR, "train_results.csv")
-    valid_path = os.path.join(XGB_OUT_DIR, "valid_results.csv")
-    test_path = os.path.join(XGB_OUT_DIR, "test_results.csv")
-
     if not (os.path.exists(train_path) and os.path.exists(valid_path) and os.path.exists(test_path)):
-        raise FileNotFoundError("找不到 XGBoost train/valid/test 结果，请检查 ml_model/output/xgboost 目录。")
+        raise FileNotFoundError(f"找不到 train/valid/test 结果文件: {train_path}, {valid_path}, {test_path}")
 
     train_df = pd.read_csv(train_path)
     valid_df = pd.read_csv(valid_path)
@@ -120,12 +118,12 @@ def load_xgb_results_and_features():
     df_all["z_r_pred"] = (df_all["r_pred"] - mean_pred) / std_pred
 
     # alpha_score
-    df_all["alpha_score"] = build_alpha_score(df_all, FACTOR_IC_PATH)
+    df_all["alpha_score"] = build_alpha_score(df_all, alpha_path)
 
     return df_all
 
 
-def build_alpha_score(df: pd.DataFrame, ic_path: str = FACTOR_IC_PATH) -> pd.Series:
+def build_alpha_score(df: pd.DataFrame, ic_path: str) -> pd.Series:
     """
     从 alpha_factor_ic_ranking.csv 读取因子及 IC，
     对因子序列 z-score，再按 |IC| 加权求和，并按 IC 符号决定方向。
@@ -396,7 +394,7 @@ def _safe_dropna(df, cols):
     return df.dropna(subset=[c for c in cols if c in df.columns]).copy()
 
 
-def eval_model_vs_real(df_all: pd.DataFrame):
+def eval_model_vs_real(df_all: pd.DataFrame, output_dir: str):
     """
     模型预测 vs 真实数据评估（train/valid/test 分开）：
     - MAE / RMSE: pred_close vs true_close
@@ -420,14 +418,14 @@ def eval_model_vs_real(df_all: pd.DataFrame):
         rows.append(_one(sp, df_all[df_all["split"] == sp]))
 
     df_eval = pd.DataFrame(rows)
-    out_path = os.path.join(BASE_DIR, "model_eval_summary.csv")
+    out_path = os.path.join(output_dir, "model_eval_summary.csv")
     df_eval.to_csv(out_path, index=False)
     print(f"\n[OK] Saved model eval summary: {out_path}")
     print(df_eval.to_string(index=False))
     return df_eval
 
 
-def quantile_test_score_vs_return(df_bt: pd.DataFrame, w_pred: float, w_alpha: float):
+def quantile_test_score_vs_return(df_bt: pd.DataFrame, w_pred: float, w_alpha: float, output_dir: str):
     """
     分位数检验：score 分位（Q1..Q10） -> 平均真实收益 r_true
     用来证明“投资结果与实际数据”的对应关系（信号有效性）
@@ -441,13 +439,13 @@ def quantile_test_score_vs_return(df_bt: pd.DataFrame, w_pred: float, w_alpha: f
     d["q"] = pd.qcut(d["score"], 10, labels=False, duplicates="drop") + 1
     qret = d.groupby("q")["r_true"].mean()
 
-    out_csv = os.path.join(BASE_DIR, "score_quantile_return.csv")
+    out_csv = os.path.join(output_dir, "score_quantile_return.csv")
     qret.to_csv(out_csv)
     print(f"\n[OK] Saved quantile returns: {out_csv}")
     return qret
 
 
-def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret: pd.Series):
+def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret: pd.Series, output_dir: str):
     """
     输出报告所需矢量图（PDF）：
     - 净值曲线
@@ -466,7 +464,7 @@ def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret
     ax.set_ylabel("NAV")
     ax.legend()
     fig.tight_layout()
-    out1 = os.path.join(BASE_DIR, "report_nav_curve.pdf")
+    out1 = os.path.join(output_dir, "report_nav_curve.pdf")
     fig.savefig(out1, bbox_inches="tight")
     plt.close(fig)
     print(f"[OK] Saved: {out1}")
@@ -481,7 +479,7 @@ def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret
     ax.set_ylabel("Drawdown")
     ax.legend()
     fig.tight_layout()
-    out2 = os.path.join(BASE_DIR, "report_drawdown_curve.pdf")
+    out2 = os.path.join(output_dir, "report_drawdown_curve.pdf")
     fig.savefig(out2, bbox_inches="tight")
     plt.close(fig)
     print(f"[OK] Saved: {out2}")
@@ -495,7 +493,7 @@ def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret
     ax.set_ylabel("Position")
     ax.set_ylim(-0.05, 1.05)
     fig.tight_layout()
-    out3 = os.path.join(BASE_DIR, "report_position_curve.pdf")
+    out3 = os.path.join(output_dir, "report_position_curve.pdf")
     fig.savefig(out3, bbox_inches="tight")
     plt.close(fig)
     print(f"[OK] Saved: {out3}")
@@ -512,7 +510,7 @@ def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret
         ax.set_ylabel("Value")
         ax.legend()
         fig.tight_layout()
-        out4 = os.path.join(BASE_DIR, "report_score_thresholds.pdf")
+        out4 = os.path.join(output_dir, "report_score_thresholds.pdf")
         fig.savefig(out4, bbox_inches="tight")
         plt.close(fig)
         print(f"[OK] Saved: {out4}")
@@ -526,7 +524,7 @@ def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret
     ax.set_xlabel("Score Quantile")
     ax.set_ylabel("Mean r_true")
     fig.tight_layout()
-    out5 = os.path.join(BASE_DIR, "report_quantile_return.pdf")
+    out5 = os.path.join(output_dir, "report_quantile_return.pdf")
     fig.savefig(out5, bbox_inches="tight")
     plt.close(fig)
     print(f"[OK] Saved: {out5}")
@@ -536,12 +534,12 @@ def save_report_plots(daily_bench: pd.DataFrame, daily_strat: pd.DataFrame, qret
 # 7. 运行回测并输出对比结果 + 评估/可视化
 # =========================
 
-def run_backtest():
+def run_backtest(train_path, valid_path, test_path, alpha_path, output_dir):
     # 1) 准备数据
-    df_all = load_xgb_results_and_features()
+    df_all = load_xgb_results_and_features(train_path, valid_path, test_path, alpha_path)
 
     # (5) 模型 vs 真实数据评估（train/valid/test）
-    eval_model_vs_real(df_all)
+    eval_model_vs_real(df_all, output_dir)
 
     # 2) 回测区间数据
     mask_bt = (df_all.index >= BACKTEST_START) & (df_all.index <= BACKTEST_END)
@@ -604,7 +602,7 @@ def run_backtest():
         daily_df["nav"] = daily_df["equity"] / INITIAL_CASH
         daily_df["drawdown"] = daily_df["nav"] / daily_df["nav"].cummax() - 1.0
 
-        out_daily = os.path.join(BASE_DIR, f"daily_{strat.p.name}.csv")
+        out_daily = os.path.join(output_dir, f"daily_{strat.p.name}.csv")
         daily_df.to_csv(out_daily)
         print(f"[OK] Saved daily series: {out_daily}")
 
@@ -616,7 +614,7 @@ def run_backtest():
         print("\n===== Strategy Performance Summary =====")
         print(df_summary.to_string(index=False))
 
-        out_path = os.path.join(BASE_DIR, "backtest_results_longonly_longshort.csv")
+        out_path = os.path.join(output_dir, "backtest_results_longonly_longshort.csv")
         df_summary.to_csv(out_path, index=False)
         print(f"\n[OK] Saved performance summary: {out_path}")
 
@@ -625,7 +623,7 @@ def run_backtest():
     #    这里用 ConvictionFilterStrategy 的默认权重
     w_pred = ConvictionFilterStrategy.params.w_pred
     w_alpha = ConvictionFilterStrategy.params.w_alpha
-    qret = quantile_test_score_vs_return(df_bt, w_pred=w_pred, w_alpha=w_alpha)
+    qret = quantile_test_score_vs_return(df_bt, w_pred=w_pred, w_alpha=w_alpha, output_dir=output_dir)
 
     # 5) 输出报告用矢量图（净值/回撤/仓位/阈值/分位收益）
     bench_name = BuyAndHoldStrategy.params.name
@@ -643,10 +641,26 @@ def run_backtest():
     daily_bench = daily_bench.loc[idx]
     daily_strat = daily_strat.loc[idx]
 
-    save_report_plots(daily_bench, daily_strat, qret)
+    save_report_plots(daily_bench, daily_strat, qret, output_dir)
 
     print("\n✅ Done. 已生成评估表与报告图（PDF 矢量）。")
 
 
 if __name__ == "__main__":
-    run_backtest()
+    parser = argparse.ArgumentParser(description="Run backtest with specified result files.")
+    parser.add_argument("train_path", help="Path to train results csv")
+    parser.add_argument("test_path", help="Path to test results csv")
+    parser.add_argument("valid_path", help="Path to valid results csv")
+    parser.add_argument("alpha_path", help="Path to alpha factor csv")
+    
+    args = parser.parse_args()
+
+    # Create output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = os.path.join(BASE_DIR, "outputs", f"bt_results_{timestamp}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    print(f"Output directory: {output_dir}")
+
+    run_backtest(args.train_path, args.valid_path, args.test_path, args.alpha_path, output_dir)
