@@ -10,6 +10,31 @@ This project is aimed at building a Machine Learning model to implement quantita
 * The strategy must aim to keep the maximum drawdown as low as possible.
 * Create visualizations of the final investment results, evaluate the results against actual market data, and conduct a comprehensive assessment of the strategy's and model's overall effectiveness.
 
+## Table of Contents
+
+- [Framework](#framework)
+- [Quick Start](#quick-start)
+  - [Requirements Install](#requirements-install)
+- [$\\alpha$ Factor Mining](#alpha-factor-mining)
+  - [Factor Minining](#factor-minining)
+  - [Execution (scripts)](#execution-scripts)
+- [Model Building and Preprocessing](#model-building-and-preprocessing)
+  - [Prepare Data](#prepare-data)
+  - [Model Training](#model-training)
+  - [Training Different Models](#training-different-models)
+  - [⚙Configuration](#configuration)
+  - [📊 Output](#-output)
+  - [Model Saving](#model-saving)
+  - [📁 Project Structure](#-project-structure)
+  - [Viewing Results](#viewing-results)
+- [Strategy Implementation](#strategy-implementation)
+  - [Prepare Data](#prepare-data-1)
+  - [1. Full backtest + report](#1-full-backtest--report-strategybacktestpy)
+  - [2. Search best $w_{\\alpha}$ / $w_{\\text{pred}}$](#2-search-best-w_alpha--w_textpred-strategybest_wpy)
+  - [3. Search best thresholds $q_{\\text{exit}}$ / $q_{\\text{half}}$](#3-search-best-thresholds-q_textexit--q_texthalf-strategybest_qpy)
+  - [4. Other strategy templates](#4-other-strategy-templates-strategyother_strategiestest)
+  - [5. Historical examples](#5-historical-examples-strategyexamples)
+
 ## Framework
 
 ![workflow](image/workflow.png)
