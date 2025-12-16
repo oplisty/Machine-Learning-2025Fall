@@ -226,41 +226,105 @@ After training, you can view:
 4. **Prediction Data**: `output/<model>/horizon_<n>/*_results.csv`
 
 ### Strategy Implementation 
-Instead of directly trading based on predicted price levels or individual factor signals, we construct a composite score $S_t$ that transforms heterogeneous information into a unified score. 
+
+Instead of directly trading on raw predicted prices or single-factor signals, we build a **composite conviction score**  
+\( S_t = w_{\text{pred}} \cdot z(r_{\text{pred},t}) + w_{\alpha} \cdot \alpha\_t \)  
+and feed it into a Backtrader strategy (`ConvictionFilterStrategy`) to drive positions (0 / 0.5 / 1).
 
 #### Prepare Data
-* The prediction data `train_results.csv`, `test_results.csv` and `valid_results.csv` which are the output of the prediction model.
-* The factor data `alpha_factor_ic_ranking.csv` which is the output of the $\alpha$ factor mining part.
 
-#### Execute the strategy
-```bash
-cd script
-cd final
-```
-Firstly change the path of the data since different models' outputs are not in the same file.
+From previous steps you should already have:
 
-Then,
-```bash
-python visual.py
-```
-This can help you find the best $w_{\alpha}$ and best $w_{pred}$ which are the weights of the score of factor and prediction data.
+- **Prediction results** from the ML model (typically XGBoost)  
+  - `ml_model/output/xgboost/horizon_<h>/train_results.csv`  
+  - `ml_model/output/xgboost/horizon_<h>/valid_results.csv`  
+  - `ml_model/output/xgboost/horizon_<h>/test_results.csv`
+- **Factor IC ranking** from α‑factor mining  
+  - `alpha_factor/output/alpha_factor_ic_ranking.csv`
+
+All strategy scripts are under the `strategy/` folder and are designed to be run **from the project root**.
+
+#### 1. Full backtest + report (`strategy/backtest.py`)
+
+Run a one‑shot backtest (benchmark vs conviction strategy) and generate all CSV/PDF reports:
 
 ```bash
-python best_q.py
-```
-This can help you find the best $q_{exit}$ and $q_{half}$ which mean the score thresholds for closing positions and holding partial positions.
+cd Machine-Learning-2025Fall
 
-Finally change the $w_{pred}$, $w_{\alpha}$, $q_{exit}$ and $q_{half}$ in `try.py`.
-```bash
-python bt.py
+python strategy/backtest.py \
+  ml_model/output/xgboost/horizon_5/train_results.csv \
+  ml_model/output/xgboost/horizon_5/test_results.csv \
+  ml_model/output/xgboost/horizon_5/valid_results.csv \
+  alpha_factor/output/alpha_factor_ic_ranking.csv
 ```
-Then you can get your best backtest_results, including final_value,total_return,annual_return,annual_vol,sharpe and max_drawdown.You can also get some pictures and data:
-* `backtest_results_longonly_longshort.csv`：策略绩效汇总
-* `daily_Benchmark_Buyandsold.csv`：基准每日：equity/nav/drawdown/position/score
-* `daily_Conviction_Filter_Strategy.csv`：策略每日：equity/nav/drawdown/position/score
-* `model_eval_summary.csv`：模型 vs 真实数据评估（train/valid/test）
-* `report_drawndown_curve.pdf`：策略与基准的最大回撤折线对比
-* `report_nav_curve.pdf`：净值曲线
-* `report_position_curve.pdf`：仓位曲线
-* `report_quantile_return.pdf`：分位收益图
-* `report_score_thresholds.pdf`：score + 阈值
+
+- **Inputs**: train/valid/test prediction CSVs + `alpha_factor_ic_ranking.csv`
+- **Outputs** (auto‑created under `outputs/bt_results_YYYYMMDD_HHMMSS/`):
+  - `backtest_results_longonly_longshort.csv` — performance summary (final value, total/annual return, vol, Sharpe, max drawdown)
+  - `daily_Benchmark_BuyAndHold.csv` — benchmark daily equity/nav/drawdown/position
+  - `daily_Conviction_Filter_Strategy.csv` — strategy daily equity/nav/drawdown/position/score
+  - `model_eval_summary.csv` — model vs real data on train/valid/test
+  - `score_quantile_return.csv` — score‑quantile return statistics
+  - `report_nav_curve.pdf`, `report_drawdown_curve.pdf`, `report_position_curve.pdf`  
+  - `report_score_thresholds.pdf` — score and rolling thresholds  
+  - `report_quantile_return.pdf` — quantile return bar chart
+
+#### 2. Search best \(w_{\alpha}\) / \(w_{\text{pred}}\) (`strategy/best_w.py`)
+
+This script scans different ratios of \(w_{\alpha} / w_{\text{pred}}\) for `ConvictionFilterStrategy` and finds the one with the highest total return.
+
+```bash
+cd Machine-Learning-2025Fall
+python strategy/best_w.py
+```
+
+- Automatically reads the same train/valid/test prediction results and factor IC file as `backtest.py`
+- **Outputs** (in `strategy/` or its subfolders):
+  - `w_alpha_w_pred_optimization.csv` — table of ratio vs total return
+  - `w_alpha_w_pred_optimization.pdf` — full curve of total return vs ratio
+  - `w_alpha_w_pred_optimization_zoom.pdf` — zoomed‑in view near the optimum
+  - `w_alpha_w_pred_optimization_log.pdf` — log‑ratio view
+
+You can then plug the best \(w_{\alpha}\) and \(w_{\text{pred}}\) back into the strategy parameters.
+
+#### 3. Search best thresholds \(q_{\text{exit}}\) / \(q_{\text{half}}\) (`strategy/best_q.py`)
+
+This script searches score quantile thresholds:
+
+- \(q_{\text{exit}}\): below this quantile → fully exit (0 position)  
+- \(q_{\text{half}}\): between \(q_{\text{exit}}\) and \(q_{\text{half}}\) → half position (0.5); above \(q_{\text{half}}\) → full position (1.0)
+
+```bash
+cd Machine-Learning-2025Fall
+python strategy/best_q.py
+```
+
+- **Outputs**:
+  - `q_params_optimization.csv` — grid of \((q_{\text{exit}}, q_{\text{half}})\) vs total return
+  - `q_params_optimization_3d.pdf` — 3D surface (total return vs \(q_{\text{exit}}\), \(q_{\text{half}}\))
+
+After identifying the best thresholds, update the corresponding strategy parameters (e.g. in `ConvictionFilterStrategy`) and re‑run `strategy/backtest.py`.
+
+#### 4. Other strategy templates (`strategy/other_strategies_test/`)
+
+The `other_strategies_test/` folder contains alternative Backtrader implementations that you can use as templates:
+
+- `bt.py` — base ML‑driven backtest pipeline
+- `bt_schemeA_ml_trend.py` — trend‑following style scheme using ML scores
+- `bt_return_max.py` — return‑maximization oriented scheme
+- `bt_lever_1p2.py` — example of applying leverage (e.g. 1.2×) on the ML strategy
+
+Usage is similar:
+
+```bash
+cd Machine-Learning-2025Fall
+python strategy/other_strategies_test/bt_schemeA_ml_trend.py
+```
+
+You can read and modify these scripts to customize position rules, leverage, and risk controls.
+
+#### 5. Historical examples (`strategy/examples/`)
+
+The `strategy/examples/` directory keeps several historical experiment scripts (`pre/`, `1daypre/`, `3daypre/`, `5daypre/`, `final/`).  
+They show how the pipeline evolved but are **not required** for basic usage.  
+If you want to reproduce those experiments, enter the corresponding folder and run `visual.py`, `best_q.py`, `bt.py` similarly, using the provided example data and outputs.
